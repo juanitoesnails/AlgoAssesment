@@ -134,7 +134,7 @@ class OrderBook:
         return self.orders
 
     def sum_unfulfilled_orders(self) -> float:
-        sum(order.order_size for order in self.orders)
+        return sum(order.order_size for order in self.orders)
 
 
 # Takes Signals and Converts them into Objects
