@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime, timedelta
 
 
 class TradingSignal:
@@ -83,3 +84,46 @@ class SignalGenerator:
             return TradingSignal.BUY
         else:
             return TradingSignal.HOLD
+
+
+# Order_Book_Objects
+class Order:
+    def __init__(
+        self, execution_time: datetime, limit_price: float, order_size: int, side: int
+    ):
+        self.execution_time = execution_time
+        self.limit_price = limit_price
+        self.order_size = order_size
+        self.side = side
+
+
+class OrderBook:
+    def __init__(self):
+        self.orders: list[Order] = []
+        self.current_side: int = None
+
+    def add_order(self, order: Order) -> None:
+        # If we switch signals we should delete all previous orders
+        if self.current_side and self.current_side != order.side:
+            self.orders = []
+
+        # Add the new order and update the current side
+        self.orders.append(order)
+        self.current_side = order.side
+        self.sort_orders()
+
+    def remove_order(self, order: Order) -> None:
+        if order in self.orders:
+            self.orders.remove(order)
+
+    def sort_orders(self) -> None:
+        self.orders.sort(key=lambda x: (x.execution_time, x.limit_price), reverse=False)
+
+    def get_book(self) -> list[Order]:
+        return self.orders
+
+    def sum_unfulfilled_orders(self) -> float:
+        total_sum = 0.0
+        for order in self.orders:
+            total_sum += order.order_size
+        return total_sum

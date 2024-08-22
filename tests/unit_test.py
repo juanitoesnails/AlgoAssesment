@@ -2,7 +2,7 @@ import unittest
 import sys
 import os
 import pandas as pd
-
+from datetime import datetime
 
 # Add the 'src' directory to the Python path
 sys.path.insert(
@@ -14,6 +14,8 @@ from trading_algo import (
     SignalGenerator,
     TradingSignal,
     BollingBandParameters,
+    Order,
+    OrderBook,
 )
 
 
@@ -147,6 +149,76 @@ class TestSignalGenerator(unittest.TestCase):
 
         self.assertAlmostEqual(upper_band, expected_upper_band)
         self.assertAlmostEqual(lower_band, expected_lower_band)
+
+
+### Test for Orders ##
+class TestOrder(unittest.TestCase):
+    def test_order_initialization(self):
+        execution_time = datetime.now()
+        limit_price = 100.5
+        order_size = 10
+        side = 1
+
+        order = Order(execution_time, limit_price, order_size, side)
+
+        self.assertEqual(order.execution_time, execution_time)
+        self.assertEqual(order.limit_price, limit_price)
+        self.assertEqual(order.order_size, order_size)
+        self.assertEqual(order.side, side)
+
+
+class TestOrderBook(unittest.TestCase):
+    def setUp(self):
+        self.order_book = OrderBook()
+
+    def test_add_order(self):
+        order = Order(datetime.now(), 100.5, 10, 1)
+        self.order_book.add_order(order)
+        self.assertIn(order, self.order_book.get_book())
+        self.assertEqual(self.order_book.current_side, 1)
+
+    def test_add_order_with_side_change(self):
+        order1 = Order(datetime.now(), 100.5, 10, 1)
+        order2 = Order(datetime.now(), 101.5, 15, -1)
+
+        self.order_book.add_order(order1)
+        self.order_book.add_order(order2)
+
+        self.assertNotIn(order1, self.order_book.get_book())  # Ensure order1 is removed
+        self.assertIn(order2, self.order_book.get_book())  # Ensure order2 is added
+        self.assertEqual(self.order_book.current_side, -1)
+
+    def test_remove_order(self):
+        order = Order(datetime.now(), 100.5, 10, 1)
+        self.order_book.add_order(order)
+        self.order_book.remove_order(order)
+        self.assertNotIn(order, self.order_book.get_book())
+
+    def test_sort_orders(self):
+        order1 = Order(datetime(2024, 8, 22, 12, 0, 0), 101.0, 10, 1)
+        order2 = Order(datetime(2024, 8, 22, 11, 0, 0), 102.0, 20, 1)
+        order3 = Order(datetime(2024, 8, 22, 11, 0, 0), 100.5, 15, 1)
+
+        self.order_book.add_order(order1)
+        self.order_book.add_order(order2)
+        self.order_book.add_order(order3)
+
+        sorted_orders = self.order_book.get_book()
+
+        # The correct order should be: order3, order2, order1 (sorted by time, then price)
+        self.assertEqual(sorted_orders, [order3, order2, order1])
+
+    def test_sum_unfulfilled_orders(self):
+        order1 = Order(datetime.now(), 100.5, 10, 1)
+        order2 = Order(datetime.now(), 101.5, 20, 1)
+        order3 = Order(datetime.now(), 102.5, 15, 1)
+
+        self.order_book.add_order(order1)
+        self.order_book.add_order(order2)
+        self.order_book.add_order(order3)
+
+        total = self.order_book.sum_unfulfilled_orders()
+        self.assertEqual(total, 45.0)
 
 
 if __name__ == "__main__":
