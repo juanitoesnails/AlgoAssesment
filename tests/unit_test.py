@@ -356,6 +356,21 @@ class TestCreateOrdersAlgo(unittest.TestCase):
         order = algo_no_order.create_order()
         self.assertIsNone(order)
 
+    def test_edge_cases(self):
+        # Test with zero open position
+        algo_zero_pos = CreateOrdersAlgo(**{**self.algo.__dict__, "open_pos": 0})
+        self.assertIsNotNone(algo_zero_pos.create_order())
+
+        # Test with maximum risk at extremes
+        algo_max_risk = CreateOrdersAlgo(**{**self.algo.__dict__, "max_risk": 1})
+        self.assertIsNotNone(algo_max_risk.create_order())
+
+        # Test with very high mid price
+        algo_high_price = CreateOrdersAlgo(
+            **{**self.algo.__dict__, "mid_price": 1000000}
+        )
+        self.assertIsNotNone(algo_high_price.create_order())
+
 
 if __name__ == "__main__":
     unittest.main()
