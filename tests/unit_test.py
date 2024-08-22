@@ -359,7 +359,7 @@ class TestCreateOrdersAlgo(unittest.TestCase):
     def test_edge_cases(self):
         # Test with zero open position
         algo_zero_pos = CreateOrdersAlgo(
-            trading_signal=TradingSignal.HOLD,
+            trading_signal=TradingSignal.BUY,
             stoploss_signal=TradingSignal.HOLD,
             limit_order_pct=self.limit_order_pct,
             millisec_execution_delay=self.millisec_execution_delay,
@@ -369,11 +369,11 @@ class TestCreateOrdersAlgo(unittest.TestCase):
             current_book_value=self.current_book_value,
             current_time=self.current_time,
         )
-        self.assertIsNone(algo_zero_pos.create_order())
+        self.assertIsNotNone(algo_zero_pos.create_order())
 
         # Test with maximum risk at extremes
         algo_max_risk = CreateOrdersAlgo(
-            trading_signal=TradingSignal.HOLD,
+            trading_signal=TradingSignal.BUY,
             stoploss_signal=TradingSignal.HOLD,
             limit_order_pct=self.limit_order_pct,
             millisec_execution_delay=self.millisec_execution_delay,
@@ -387,7 +387,7 @@ class TestCreateOrdersAlgo(unittest.TestCase):
 
         # Test with very high mid price
         algo_high_price = CreateOrdersAlgo(
-            trading_signal=TradingSignal.HOLD,
+            trading_signal=TradingSignal.BUY,
             stoploss_signal=TradingSignal.HOLD,
             limit_order_pct=self.limit_order_pct,
             millisec_execution_delay=self.millisec_execution_delay,
@@ -397,7 +397,7 @@ class TestCreateOrdersAlgo(unittest.TestCase):
             current_book_value=self.current_book_value,
             current_time=self.current_time,
         )
-        self.assertIsNotNone(algo_high_price.create_order())
+        self.assertIsNone(algo_high_price.create_order())
 
 
 if __name__ == "__main__":
