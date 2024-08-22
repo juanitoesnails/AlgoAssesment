@@ -400,5 +400,187 @@ class TestCreateOrdersAlgo(unittest.TestCase):
         self.assertIsNone(algo_high_price.create_order())
 
 
+class TestOrderMatchingAlgo(unittest.TestCase):
+    def setUp(self):
+        self.current_time = datetime.now()
+        self.order_matching_algo = OrderMatchingAlgo()
+
+    def test_exit_order_matching(self):
+        order_book = OrderBook()
+        trade_history = deque()
+        cash_util = 10000.0
+        open_pos = 0
+        execution_costs = 0.0
+
+        report = self.order_matching_algo.exit_order_matching(
+            trade_history, cash_util, open_pos, execution_costs, order_book
+        )
+
+        self.assertIsInstance(report, ExecutionReport)
+        self.assertEqual(report.order_book, order_book)
+        self.assertEqual(report.trade_history, trade_history)
+        self.assertEqual(report.cash_util, cash_util)
+        self.assertEqual(report.open_pos, open_pos)
+        self.assertEqual(report.execution_costs, execution_costs)
+
+    def test_execute_orders_buy(self):
+        order_book = OrderBook()
+        trade_history = deque()
+        cash_util = 10000.0
+        open_pos = 0
+        execution_costs = 0.0
+
+        # Create and add a buy order to the order book
+        order = Order(
+            execution_time=self.current_time - timedelta(minutes=1),
+            limit_price=105.0,
+            order_size=50,
+            side=TradingSignal.BUY,
+        )
+        order_book.add_order(order)
+
+        # Execute orders
+        report = self.order_matching_algo.execute_orders(
+            order_book,
+            bid_size=50,
+            bid_price=100.0,
+            ask_size=0,
+            ask_price=0,
+            current_time=self.current_time,
+            trade_history=trade_history,
+            cash_util=cash_util,
+            execution_costs_per_contract=execution_costs,
+            open_pos=open_pos,
+        )
+
+        self.assertEqual(len(trade_history), 1)
+        trade = trade_history[-1]
+        self.assertEqual(trade.trade_amount, 50)
+        self.assertEqual(trade.price, 100.0)
+        self.assertEqual(trade.time, self.current_time)
+        self.assertEqual(report.cash_util, cash_util - 50 * 100.0)
+        self.assertEqual(report.open_pos, 50)
+        self.assertEqual(report.execution_costs, 0.0)
+        self.assertEqual(len(order_book.get_book()), 0)
+
+    def test_execute_orders_sell(self):
+        order_book = OrderBook()
+        trade_history = deque()
+        cash_util = 10000.0
+        open_pos = 1000
+        execution_costs = 1
+
+        # Create and add a sell order to the order book
+        order = Order(
+            execution_time=self.current_time,
+            limit_price=80.0,
+            order_size=-50,
+            side=TradingSignal.SELL,
+        )
+        order_book.add_order(order)
+
+        # Execute orders
+        report = self.order_matching_algo.execute_orders(
+            order_book,
+            bid_size=0,
+            bid_price=0,
+            ask_size=50,
+            ask_price=90.0,
+            current_time=self.current_time,
+            trade_history=trade_history,
+            cash_util=cash_util,
+            execution_costs_per_contract=execution_costs,
+            open_pos=open_pos,
+        )
+
+        self.assertEqual(len(trade_history), 1)
+        trade = trade_history[-1]
+        self.assertEqual(trade.trade_amount, -50)
+        self.assertEqual(trade.price, 90)
+        self.assertEqual(trade.time, self.current_time)
+        self.assertEqual(report.cash_util, cash_util + (50 * 90))
+        self.assertEqual(report.open_pos, open_pos - 50)
+        self.assertEqual(report.execution_costs, 50)
+        self.assertEqual(len(order_book.get_book()), 0)
+
+    def test_execute_orders_no_execution(self):
+        order_book = OrderBook()
+        trade_history = deque()
+        cash_util = 10000.0
+        open_pos = 0
+        execution_costs = 0.0
+
+        # Create and add a buy order to the order book
+        order = Order(
+            execution_time=self.current_time + timedelta(minutes=1),
+            limit_price=105.0,
+            order_size=50,
+            side=TradingSignal.BUY,
+        )
+        order_book.add_order(order)
+
+        # Execute orders
+        report = self.order_matching_algo.execute_orders(
+            order_book,
+            bid_size=50,
+            bid_price=100.0,
+            ask_size=0,
+            ask_price=0,
+            current_time=self.current_time,
+            trade_history=trade_history,
+            cash_util=cash_util,
+            execution_costs_per_contract=execution_costs,
+            open_pos=open_pos,
+        )
+
+        self.assertEqual(len(trade_history), 0)
+        self.assertEqual(report.cash_util, cash_util)
+        self.assertEqual(report.open_pos, open_pos)
+        self.assertEqual(report.execution_costs, execution_costs)
+        self.assertEqual(len(order_book.get_book()), 1)
+
+    def test_execute_orders_partial_execution(self):
+        order_book = OrderBook()
+        trade_history = deque()
+        cash_util = 10000.0
+        open_pos = 0
+        execution_costs = 0.0
+
+        # Create and add a buy order to the order book
+        order = Order(
+            execution_time=self.current_time - timedelta(minutes=1),
+            limit_price=105.0,
+            order_size=100,
+            side=TradingSignal.BUY,
+        )
+        order_book.add_order(order)
+
+        # Execute orders
+        report = self.order_matching_algo.execute_orders(
+            order_book,
+            bid_size=50,
+            bid_price=100.0,
+            ask_size=0,
+            ask_price=0,
+            current_time=self.current_time,
+            trade_history=trade_history,
+            cash_util=cash_util,
+            execution_costs_per_contract=0.0,
+            open_pos=open_pos,
+        )
+
+        self.assertEqual(len(trade_history), 1)
+        trade = trade_history[-1]
+        self.assertEqual(trade.trade_amount, 50)
+        self.assertEqual(trade.price, 100.0)
+        self.assertEqual(trade.time, self.current_time)
+        self.assertEqual(report.cash_util, cash_util - 50 * 100.0)
+        self.assertEqual(report.open_pos, 50)
+        self.assertEqual(report.execution_costs, 0.0)
+        self.assertEqual(
+            len(order_book.get_book()), 1
+        )  # Order not fully executed, should remain in the book
+
+
 if __name__ == "__main__":
     unittest.main()

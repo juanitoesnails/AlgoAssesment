@@ -2,6 +2,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from operator import attrgetter
 from enum import Enum
+from collections import deque
 
 # We will use these two for limits prices when executing market
 ARBITRARY_HIGH_PRICE = 100_000_000
@@ -11,6 +12,13 @@ ARBITRARY_LOW_PRICE = 0
 class Side(Enum):
     BUY = 1
     SELL = 2
+
+
+class Trade:
+    def __init__(self, trade_amount: int, price: float, time: datetime):
+        self.trade_amount = trade_amount
+        self.price = price
+        self.time = time
 
 
 class TradingSignal:
@@ -212,3 +220,113 @@ class CreateOrdersAlgo:
             return self.create_limit_order()
         else:
             return None
+
+
+# Matching Algo
+class ExecutionReport:
+    def __init__(
+        self,
+        order_book: OrderBook,
+        trade_history: deque[Trade],
+        cash_util: float,
+        open_pos: int,
+        execution_costs: float,
+    ):
+        self.order_book = order_book
+        self.trade_history = trade_history
+        self.cash_util = cash_util
+        self.open_pos = open_pos
+        self.execution_costs = execution_costs
+
+
+class OrderMatchingAlgo:
+    def exit_order_matching(
+        self,
+        trade_history: deque[Trade],
+        cash_util: float,
+        open_pos: int,
+        execution_costs: float,
+        order_book=OrderBook,
+    ) -> ExecutionReport:
+        return ExecutionReport(
+            order_book, trade_history, cash_util, open_pos, execution_costs
+        )
+
+    def execute_orders(
+        self,
+        order_book: OrderBook,
+        bid_size: int,
+        bid_price: int,
+        ask_size: int,
+        ask_price: int,
+        current_time: datetime,
+        trade_history: deque[Trade],
+        cash_util: float,
+        execution_costs_per_contract: float,
+        open_pos: int,
+    ) -> ExecutionReport:
+
+        # Get orders from the order book
+        orders = order_book.get_book()
+
+        # Create a shallow copy of orders to modify the original list while iterating
+        for order in orders[:]:
+            order_executed = False
+
+            # Check if there are no available sizes for buying or selling
+            if ask_size == 0 and any(
+                order.side == TradingSignal.SELL for order in orders
+            ):
+                return self.exit_order_matching(
+                    trade_history,
+                    cash_util,
+                    open_pos,
+                    execution_costs_per_contract,
+                    order_book,
+                )
+
+            if bid_price == 0 and any(
+                order.side == TradingSignal.BUY for order in orders
+            ):
+                return self.exit_order_matching(
+                    trade_history,
+                    cash_util,
+                    open_pos,
+                    execution_costs_per_contract,
+                    order_book,
+                )
+
+            # Skip the order if the execution time has not been reached
+            if order.execution_time > current_time:
+                continue
+
+            if order.side == TradingSignal.BUY and bid_price <= order.limit_price:
+                trade_amount = min(order.order_size, bid_size)
+                bid_size -= trade_amount
+                traded_px = bid_price
+                order_executed = True
+
+            elif order.side == TradingSignal.SELL and ask_price >= order.limit_price:
+                trade_amount = min(-order.order_size, ask_size)
+                ask_size -= trade_amount
+                trade_amount = trade_amount * -1
+                traded_px = ask_price
+                order_executed = True
+
+            # Update our variables if we executed
+            if order_executed:
+                order.order_size -= trade_amount
+                cash_util -= trade_amount * traded_px
+                execution_costs_per_contract = (
+                    abs(trade_amount) * execution_costs_per_contract
+                )
+                open_pos += trade_amount
+                trade_history.append(Trade(trade_amount, traded_px, current_time))
+
+                # If the order is fully filled, remove it from the order book
+                if order.order_size == 0:
+                    order_book.orders.remove(order)
+
+        return self.exit_order_matching(
+            trade_history, cash_util, open_pos, execution_costs_per_contract, order_book
+        )
