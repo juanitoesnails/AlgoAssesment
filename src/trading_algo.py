@@ -1,6 +1,10 @@
 import pandas as pd
 from datetime import datetime, timedelta
 
+# We will use these two for limits prices when executing market
+ARBITRARY_HIGH_PRICE = 100_000_000
+ARBITRARY_LOW_PRICE = 0
+
 
 class TradingSignal:
     BUY = 1
@@ -10,19 +14,19 @@ class TradingSignal:
 
 # Trading Signal Objects
 class BollingBandParameters:
-    def __init__(self, bollinger_bands_params: tuple[int, int]):
+    def __init__(self, bollinger_bands_params: tuple[int, int]) -> None:
         self.rolling_window = bollinger_bands_params[0]
         self.standard_deviations = bollinger_bands_params[1]
 
 
 class MovingAveragesParameter:
-    def __init__(self, moving_averages_params: tuple[int, int, int]):
+    def __init__(self, moving_averages_params: tuple[int, int, int]) -> None:
         self.validate_params(moving_averages_params)
         self.long_rolling_window = moving_averages_params[0]
         self.medium_rolling_window = moving_averages_params[1]
         self.short_rolling_window = moving_averages_params[2]
 
-    def validate_params(self, params: tuple[int, int, int]):
+    def validate_params(self, params: tuple[int, int, int]) -> None:
         if not (params[0] > params[1] > params[2]):
             raise ValueError(
                 "Invalid arguments: The values must be in descending order (long > medium > short)"
@@ -127,3 +131,80 @@ class OrderBook:
         for order in self.orders:
             total_sum += order.order_size
         return total_sum
+
+
+# Takes Signals and Converts them into Objects
+class CreateOrdersAlgo:
+    def __init__(
+        self,
+        trading_signal: int,
+        stoploss_signal: int,
+        limit_order_pct: float,
+        millisec_execution_delay: timedelta,
+        open_pos: int,
+        max_risk: float,
+        mid_price: float,
+        current_book_value: int,
+        current_time: datetime,
+    ) -> None:
+        self.trading_signal = trading_signal
+        self.stoploss_signal = stoploss_signal
+        self.limit_order_pct = limit_order_pct
+        self.open_pos = open_pos
+        self.max_risk = max_risk
+        self.mid_price = mid_price
+        self.current_book_value = current_book_value
+        self.execution_time = current_time + millisec_execution_delay
+
+    def create_stoploss_order(self) -> Order:
+        # Use a market order for stoplosses
+        limit_price = (
+            ARBITRARY_HIGH_PRICE
+            if self.stoploss_signal == TradingSignal.BUY
+            else ARBITRARY_LOW_PRICE
+        )
+        size = -self.open_pos
+
+        return Order(
+            execution_time=self.execution_time,
+            limit_price=limit_price,
+            order_size=size,
+            side=self.stoploss_signal,
+        )
+
+    def create_limit_order(self) -> Order:  # Assuming Order is defined elsewhere
+        desired_esp = self.current_book_value * self.max_risk * self.trading_signal
+        current_esp = self.open_pos * self.mid_price
+        target_order = int((desired_esp - current_esp) / self.mid_price)
+
+        if self.trading_signal == TradingSignal.BUY:
+            limit_price = self.mid_price * (1 + self.limit_order_pct)
+            order_size = max(target_order, 0)
+        else:
+            limit_price = self.mid_price * (1 - self.limit_order_pct)
+            order_size = min(target_order, 0)
+
+        if order_size == 0:
+            return None
+
+        return Order(
+            execution_time=self.execution_time,
+            limit_price=limit_price,
+            order_size=order_size,
+            side=self.trading_signal,
+        )
+
+    def create_order(self) -> Order:
+        # Check for stoplosses
+        if (self.open_pos > 0 and self.stoploss_signal == TradingSignal.SELL) or (
+            self.open_pos < 0 and self.stoploss_signal == TradingSignal.BUY
+        ):
+            return self.create_stoploss_order()
+
+        elif self.stoploss_signal != TradingSignal.HOLD:
+            return self.create_stoploss_order()
+
+        elif self.trading_signal != TradingSignal.HOLD:
+            return self.create_limit_order()
+        else:
+            return None
