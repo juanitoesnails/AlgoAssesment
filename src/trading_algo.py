@@ -1,9 +1,16 @@
 import pandas as pd
 from datetime import datetime, timedelta
+from operator import attrgetter
+from enum import Enum
 
 # We will use these two for limits prices when executing market
 ARBITRARY_HIGH_PRICE = 100_000_000
 ARBITRARY_LOW_PRICE = 0
+
+
+class Side(Enum):
+    BUY = 1
+    SELL = 2
 
 
 class TradingSignal:
@@ -93,7 +100,7 @@ class SignalGenerator:
 # Order_Book_Objects
 class Order:
     def __init__(
-        self, execution_time: datetime, limit_price: float, order_size: int, side: int
+        self, execution_time: datetime, limit_price: float, order_size: int, side: Side
     ):
         self.execution_time = execution_time
         self.limit_price = limit_price
@@ -121,16 +128,13 @@ class OrderBook:
             self.orders.remove(order)
 
     def sort_orders(self) -> None:
-        self.orders.sort(key=lambda x: (x.execution_time, x.limit_price), reverse=False)
+        self.orders.sort(key=attrgetter("execution_time", "limit_price"))
 
     def get_book(self) -> list[Order]:
         return self.orders
 
     def sum_unfulfilled_orders(self) -> float:
-        total_sum = 0.0
-        for order in self.orders:
-            total_sum += order.order_size
-        return total_sum
+        sum(order.order_size for order in self.orders)
 
 
 # Takes Signals and Converts them into Objects

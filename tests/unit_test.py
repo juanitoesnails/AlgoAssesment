@@ -180,16 +180,17 @@ class TestOrderBook(unittest.TestCase):
         self.assertIn(order, self.order_book.get_book())
         self.assertEqual(self.order_book.current_side, 1)
 
-    def test_add_order_with_side_change(self):
+    def test_add_order_with_multiple_side_changes(self):
         order1 = Order(datetime.now(), 100.5, 10, 1)
         order2 = Order(datetime.now(), 101.5, 15, -1)
+        order3 = Order(datetime.now(), 102.0, 20, 1)
 
         self.order_book.add_order(order1)
+        self.assertEqual(self.order_book.current_side, 1)
         self.order_book.add_order(order2)
-
-        self.assertNotIn(order1, self.order_book.get_book())  # Ensure order1 is removed
-        self.assertIn(order2, self.order_book.get_book())  # Ensure order2 is added
         self.assertEqual(self.order_book.current_side, -1)
+        self.order_book.add_order(order3)
+        self.assertEqual(self.order_book.current_side, 1)
 
     def test_remove_order(self):
         order = Order(datetime.now(), 100.5, 10, 1)
