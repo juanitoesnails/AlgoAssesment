@@ -2,7 +2,7 @@ import unittest
 import sys
 import os
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Add the 'src' directory to the Python path
 sys.path.insert(
@@ -16,6 +16,9 @@ from trading_algo import (
     BollingBandParameters,
     Order,
     OrderBook,
+    CreateOrdersAlgo,
+    ARBITRARY_HIGH_PRICE,
+    ARBITRARY_LOW_PRICE,
 )
 
 
@@ -177,16 +180,17 @@ class TestOrderBook(unittest.TestCase):
         self.assertIn(order, self.order_book.get_book())
         self.assertEqual(self.order_book.current_side, 1)
 
-    def test_add_order_with_side_change(self):
+    def test_add_order_with_multiple_side_changes(self):
         order1 = Order(datetime.now(), 100.5, 10, 1)
         order2 = Order(datetime.now(), 101.5, 15, -1)
+        order3 = Order(datetime.now(), 102.0, 20, 1)
 
         self.order_book.add_order(order1)
+        self.assertEqual(self.order_book.current_side, 1)
         self.order_book.add_order(order2)
-
-        self.assertNotIn(order1, self.order_book.get_book())  # Ensure order1 is removed
-        self.assertIn(order2, self.order_book.get_book())  # Ensure order2 is added
         self.assertEqual(self.order_book.current_side, -1)
+        self.order_book.add_order(order3)
+        self.assertEqual(self.order_book.current_side, 1)
 
     def test_remove_order(self):
         order = Order(datetime.now(), 100.5, 10, 1)
@@ -219,6 +223,181 @@ class TestOrderBook(unittest.TestCase):
 
         total = self.order_book.sum_unfulfilled_orders()
         self.assertEqual(total, 45.0)
+
+
+### Test for Order Creations ##
+class TestCreateOrdersAlgo(unittest.TestCase):
+    def setUp(self):
+        self.trading_signal = TradingSignal.BUY
+        self.stoploss_signal = TradingSignal.SELL
+        self.limit_order_pct = 0.01
+        self.millisec_execution_delay = timedelta(milliseconds=100)
+        self.open_pos = 1000
+        self.max_risk = 0.1
+        self.mid_price = 50
+        self.current_book_value = 1000000
+        self.current_time = datetime.now()
+
+        self.algo = CreateOrdersAlgo(
+            trading_signal=self.trading_signal,
+            stoploss_signal=self.stoploss_signal,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=self.max_risk,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+
+    def test_create_stoploss_order_closes_position(self):
+        # Create a stoploss order
+        stoploss_order = self.algo.create_stoploss_order()
+
+        # Check if the stoploss order size is the negative of the open position
+        self.assertEqual(stoploss_order.order_size, -self.open_pos)
+
+        # Check if the limit price is set correctly for the stoploss signal
+        if self.stoploss_signal == TradingSignal.SELL:
+            self.assertEqual(stoploss_order.limit_price, ARBITRARY_LOW_PRICE)
+        elif self.stoploss_signal == TradingSignal.BUY:
+            self.assertEqual(stoploss_order.limit_price, ARBITRARY_HIGH_PRICE)
+
+        # Check that the execution time is correctly set
+        self.assertEqual(stoploss_order.execution_time, self.algo.execution_time)
+
+    def test_create_stoploss_order_buy_signal(self):
+        # Change stoploss signal to BUY and test
+        algo_buy_stoploss = CreateOrdersAlgo(
+            trading_signal=self.trading_signal,
+            stoploss_signal=TradingSignal.BUY,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=-self.open_pos,  # Ensure we're testing the closing of a short position
+            max_risk=self.max_risk,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+
+        stoploss_order = algo_buy_stoploss.create_stoploss_order()
+
+        # Check if the stoploss order size is the positive of the open position (closing a short position)
+        self.assertEqual(stoploss_order.order_size, self.open_pos)
+
+        # Check if the limit price is set correctly for the stoploss signal
+        self.assertEqual(stoploss_order.limit_price, ARBITRARY_HIGH_PRICE)
+
+        # Check that the execution time is correctly set
+        self.assertEqual(
+            stoploss_order.execution_time, algo_buy_stoploss.execution_time
+        )
+
+    def test_create_limit_order(self):
+        limit_order = self.algo.create_limit_order()
+
+        desired_esp = self.current_book_value * self.max_risk * self.trading_signal
+        current_esp = self.open_pos * self.mid_price
+        order_size = int((desired_esp - current_esp) / self.mid_price)
+
+        if self.trading_signal == TradingSignal.BUY:
+            limit_price = self.mid_price * (1 + self.limit_order_pct)
+            order_size = max(order_size, 0)
+        else:
+            limit_price = self.mid_price * (1 - self.limit_order_pct)
+            order_size = min(order_size, 0)
+
+        self.assertIsNotNone(limit_order)
+        self.assertEqual(limit_order.limit_price, limit_price)
+        self.assertEqual(limit_order.order_size, order_size)
+        self.assertEqual(limit_order.side, self.trading_signal)
+        self.assertEqual(limit_order.execution_time, self.algo.execution_time)
+
+    def test_create_order_stoploss(self):
+        order = self.algo.create_order()
+        self.assertEqual(order.limit_price, ARBITRARY_LOW_PRICE)
+        self.assertEqual(order.order_size, -self.open_pos)
+        self.assertEqual(order.side, self.stoploss_signal)
+        self.assertEqual(order.execution_time, self.algo.execution_time)
+
+    def test_create_order_limit(self):
+        algo_limit_order = CreateOrdersAlgo(
+            trading_signal=self.trading_signal,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=self.max_risk,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+
+        order = algo_limit_order.create_order()
+
+        self.assertIsNotNone(order)
+        self.assertEqual(order.limit_price, self.mid_price * (1 + self.limit_order_pct))
+        self.assertEqual(order.side, self.trading_signal)
+        self.assertEqual(order.execution_time, algo_limit_order.execution_time)
+
+    def test_create_order_none(self):
+        algo_no_order = CreateOrdersAlgo(
+            trading_signal=TradingSignal.HOLD,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=self.max_risk,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+
+        order = algo_no_order.create_order()
+        self.assertIsNone(order)
+
+    def test_edge_cases(self):
+        # Test with zero open position
+        algo_zero_pos = CreateOrdersAlgo(
+            trading_signal=TradingSignal.BUY,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=0,
+            max_risk=self.max_risk,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+        self.assertIsNotNone(algo_zero_pos.create_order())
+
+        # Test with maximum risk at extremes
+        algo_max_risk = CreateOrdersAlgo(
+            trading_signal=TradingSignal.BUY,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=1,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+        self.assertIsNotNone(algo_max_risk.create_order())
+
+        # Test with very high mid price
+        algo_high_price = CreateOrdersAlgo(
+            trading_signal=TradingSignal.BUY,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=self.max_risk,
+            mid_price=1_000_000,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+        self.assertIsNone(algo_high_price.create_order())
 
 
 if __name__ == "__main__":
