@@ -358,16 +358,44 @@ class TestCreateOrdersAlgo(unittest.TestCase):
 
     def test_edge_cases(self):
         # Test with zero open position
-        algo_zero_pos = CreateOrdersAlgo(**{**self.algo.__dict__, "open_pos": 0})
-        self.assertIsNotNone(algo_zero_pos.create_order())
+        algo_zero_pos = CreateOrdersAlgo(
+            trading_signal=TradingSignal.HOLD,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=0,
+            max_risk=self.max_risk,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
+        self.assertIsNone(algo_zero_pos.create_order())
 
         # Test with maximum risk at extremes
-        algo_max_risk = CreateOrdersAlgo(**{**self.algo.__dict__, "max_risk": 1})
+        algo_max_risk = CreateOrdersAlgo(
+            trading_signal=TradingSignal.HOLD,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=1,
+            mid_price=self.mid_price,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
+        )
         self.assertIsNotNone(algo_max_risk.create_order())
 
         # Test with very high mid price
         algo_high_price = CreateOrdersAlgo(
-            **{**self.algo.__dict__, "mid_price": 1000000}
+            trading_signal=TradingSignal.HOLD,
+            stoploss_signal=TradingSignal.HOLD,
+            limit_order_pct=self.limit_order_pct,
+            millisec_execution_delay=self.millisec_execution_delay,
+            open_pos=self.open_pos,
+            max_risk=self.max_risk,
+            mid_price=1_000_000,
+            current_book_value=self.current_book_value,
+            current_time=self.current_time,
         )
         self.assertIsNotNone(algo_high_price.create_order())
 
