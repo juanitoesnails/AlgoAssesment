@@ -3,6 +3,7 @@ import sys
 import os
 import pandas as pd
 from datetime import datetime, timedelta
+from collections import deque
 
 # Add the 'src' directory to the Python path
 sys.path.insert(
@@ -17,6 +18,8 @@ from trading_algo import (
     Order,
     OrderBook,
     CreateOrdersAlgo,
+    OrderMatchingAlgo,
+    ExecutionReport,
     ARBITRARY_HIGH_PRICE,
     ARBITRARY_LOW_PRICE,
 )
@@ -430,7 +433,6 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         open_pos = 0
         execution_costs = 0.0
 
-        # Create and add a buy order to the order book
         order = Order(
             execution_time=self.current_time - timedelta(minutes=1),
             limit_price=105.0,
@@ -439,7 +441,6 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         )
         order_book.add_order(order)
 
-        # Execute orders
         report = self.order_matching_algo.execute_orders(
             order_book,
             bid_size=50,
@@ -462,6 +463,8 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         self.assertEqual(report.open_pos, 50)
         self.assertEqual(report.execution_costs, 0.0)
         self.assertEqual(len(order_book.get_book()), 0)
+        self.assertNotIn(order, order_book.get_book())
+        self.assertEqual(order.order_size, 0)
 
     def test_execute_orders_sell(self):
         order_book = OrderBook()
