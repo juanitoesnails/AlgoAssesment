@@ -356,10 +356,15 @@ class DashboardMetrics:
         # Update the peak if the new portfolio value is greater
         if new_portfolio_value > current_max_draw_down.peak:
             new_peak = new_portfolio_value
-            new_max_drawdown = 0.0
+            new_max_drawdown = 0.0  # Reset drawdown since we have a new peak
         else:
             new_peak = current_max_draw_down.peak
-            drawdown = (new_peak - new_portfolio_value) / new_peak
+            if new_peak == 0:  # Prevent division by zero
+                drawdown = 0.0
+            else:
+                drawdown = (new_peak - new_portfolio_value) / new_peak
+
+            # Calculate the new max drawdown
             new_max_drawdown = max(current_max_draw_down.drawdown, drawdown)
 
-        return MaxDrawDownInfo(new_max_drawdown, new_peak)
+        return MaxDrawDownInfo(drawdown=new_max_drawdown, peak=new_peak)
