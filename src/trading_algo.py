@@ -324,7 +324,7 @@ class OrderMatchingAlgo:
         )
 
 
-class MaxDrawDown:
+class MaxDrawDownInfo:
     def __init__(self, drawdown: float, peak: float):
         self.drawdown = drawdown
         self.peak = peak
@@ -351,8 +351,8 @@ class DashboardMetrics:
         return pd.DataFrame(trade_data_list, columns=TRADE_HISTORY_COLUMNS)
 
     def update_max_drawdown(
-        self, current_max_draw_down: MaxDrawDown, new_portfolio_value: float
-    ) -> MaxDrawDown:
+        self, current_max_draw_down: MaxDrawDownInfo, new_portfolio_value: float
+    ) -> MaxDrawDownInfo:
         # Update the peak if the new portfolio value is greater
         if new_portfolio_value > current_max_draw_down.peak:
             new_peak = new_portfolio_value
@@ -362,4 +362,4 @@ class DashboardMetrics:
             drawdown = (new_peak - new_portfolio_value) / new_peak
             new_max_drawdown = max(current_max_draw_down.drawdown, drawdown)
 
-        return MaxDrawDown(new_max_drawdown, new_peak)
+        return MaxDrawDownInfo(new_max_drawdown, new_peak)

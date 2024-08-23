@@ -23,7 +23,7 @@ from trading_algo import (
     ARBITRARY_HIGH_PRICE,
     ARBITRARY_LOW_PRICE,
     DashboardMetrics,
-    MaxDrawDown,
+    MaxDrawDownInfo,
     Trade,
     TRADE_HISTORY_COLUMNS,
 )
@@ -669,33 +669,24 @@ class TestDashboardMetrics(unittest.TestCase):
         pd.testing.assert_frame_equal(df, expected_df)
 
     def test_update_max_drawdown(self):
-        current_max_draw_down = MaxDrawDown(drawdown=0.05, peak=100.0)
-        new_portfolio_value = 85.0
-
-        new_max_drawdown = self.dashboard_metrics.update_max_drawdown(
-            current_max_draw_down, new_portfolio_value
-        )
-
-        expected_drawdown = (100.0 - 85.0) / 100.0
-        expected_peak = 100.0
-        expected_max_drawdown = max(0.05, expected_drawdown)
-
-        self.assertEqual(new_max_drawdown.drawdown, expected_max_drawdown)
-        self.assertEqual(new_max_drawdown.peak, expected_peak)
-
-        # Test with a new peak
-        new_portfolio_value = 110.0
-        new_max_drawdown = self.dashboard_metrics.update_max_drawdown(
-            current_max_draw_down, new_portfolio_value
-        )
-
-        expected_drawdown = (new_portfolio_value - 110.0) / new_portfolio_value
-        expected_peak = 110.0
-
         self.assertEqual(
-            new_max_drawdown.drawdown, 0.0
-        )  # No drawdown if new value is the highest
-        self.assertEqual(new_max_drawdown.peak, expected_peak)
+            self.dashboard_metrics.update_max_drawdown(
+                MaxDrawDownInfo(0.05, 100.0), 95.0
+            ),
+            MaxDrawDownInfo(0.05, 100.0),
+        )
+        self.assertEqual(
+            self.dashboard_metrics.update_max_drawdown(
+                MaxDrawDownInfo(0.05, 100.0), 110.0
+            ),
+            MaxDrawDownInfo(0.00, 110.0),
+        )
+        self.assertEqual(
+            self.dashboard_metrics.update_max_drawdown(
+                MaxDrawDownInfo(0.05, 100.0), 70.0
+            ),
+            MaxDrawDownInfo(0.30, 100.0),
+        )
 
 
 if __name__ == "__main__":
