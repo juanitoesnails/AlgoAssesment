@@ -8,6 +8,9 @@ from collections import deque
 ARBITRARY_HIGH_PRICE = 100_000_000
 ARBITRARY_LOW_PRICE = 0
 
+# Columns for Dataframe
+TRADE_HISTORY_COLUMNS = ["Trade Amount", "Price", "Time"]
+
 
 class Side(Enum):
     BUY = 1
@@ -319,3 +322,44 @@ class OrderMatchingAlgo:
         return self.exit_order_matching(
             trade_history, cash_util, open_pos, execution_costs_per_contract, order_book
         )
+
+
+class MaxDrawDown:
+    def __init__(self, drawdown: float, peak: float):
+        self.drawdown = drawdown
+        self.peak = peak
+
+
+# Calculate_Data_for_Dashboard
+class DashboardMetrics:
+    def calculate_pnl(
+        self, open_pos: int, px_mid: float, cash_utils: float, trading_costs: float
+    ):
+        return (open_pos * px_mid) + cash_utils - trading_costs
+
+    def get_trade_history_df(self, trade_history: deque[Trade]) -> pd.DataFrame:
+        trade_data_list = []
+
+        for trade in trade_history:
+            trade_data = {
+                TRADE_HISTORY_COLUMNS[0]: trade.trade_amount,
+                TRADE_HISTORY_COLUMNS[1]: trade.price,
+                TRADE_HISTORY_COLUMNS[2]: trade.time,
+            }
+            trade_data_list.append(trade_data)
+
+        return pd.DataFrame(trade_data_list, columns=TRADE_HISTORY_COLUMNS)
+
+    def update_max_drawdown(
+        self, current_max_draw_down: MaxDrawDown, new_portfolio_value: float
+    ) -> MaxDrawDown:
+        # Update the peak if the new portfolio value is greater
+        if new_portfolio_value > current_max_draw_down.peak:
+            new_peak = new_portfolio_value
+            new_max_drawdown = 0.0
+        else:
+            new_peak = current_max_draw_down.peak
+            drawdown = (new_peak - new_portfolio_value) / new_peak
+            new_max_drawdown = max(current_max_draw_down.drawdown, drawdown)
+
+        return MaxDrawDown(new_max_drawdown, new_peak)
