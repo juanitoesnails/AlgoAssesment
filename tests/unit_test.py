@@ -443,10 +443,10 @@ class TestOrderMatchingAlgo(unittest.TestCase):
 
         report = self.order_matching_algo.execute_orders(
             order_book,
-            bid_size=50,
-            bid_price=100.0,
-            ask_size=0,
-            ask_price=0,
+            bid_size=0,
+            bid_price=0,
+            ask_size=50,
+            ask_price=100.0,
             current_time=self.current_time,
             trade_history=trade_history,
             cash_util=cash_util,
@@ -465,6 +465,40 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         self.assertEqual(len(order_book.get_book()), 0)
         self.assertNotIn(order, order_book.get_book())
         self.assertEqual(order.order_size, 0)
+
+    def test_execute_orders_no_execution_limit_price_not_met(self):
+        order_book = OrderBook()
+        trade_history = deque()
+        cash_util = 10000.0
+        open_pos = 0
+        execution_costs = 0.0
+
+        order = Order(
+            execution_time=self.current_time,
+            limit_price=110.0,
+            order_size=50,
+            side=TradingSignal.BUY,
+        )
+        order_book.add_order(order)
+
+        report = self.order_matching_algo.execute_orders(
+            order_book,
+            bid_size=50,
+            bid_price=105.0,
+            ask_size=50,
+            ask_price=115.0,
+            current_time=self.current_time,
+            trade_history=trade_history,
+            cash_util=cash_util,
+            execution_costs_per_contract=execution_costs,
+            open_pos=open_pos,
+        )
+
+        self.assertEqual(len(trade_history), 0)
+        self.assertEqual(report.cash_util, cash_util)
+        self.assertEqual(report.open_pos, open_pos)
+        self.assertEqual(report.execution_costs, execution_costs)
+        self.assertEqual(len(order_book.get_book()), 1)
 
     def test_execute_orders_sell(self):
         order_book = OrderBook()
@@ -485,10 +519,10 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         # Execute orders
         report = self.order_matching_algo.execute_orders(
             order_book,
-            bid_size=0,
-            bid_price=0,
-            ask_size=50,
-            ask_price=90.0,
+            bid_size=50,
+            bid_price=90,
+            ask_size=0,
+            ask_price=0,
             current_time=self.current_time,
             trade_history=trade_history,
             cash_util=cash_util,
@@ -561,10 +595,10 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         # Execute orders
         report = self.order_matching_algo.execute_orders(
             order_book,
-            bid_size=50,
-            bid_price=100.0,
-            ask_size=0,
-            ask_price=0,
+            bid_size=0,
+            bid_price=0,
+            ask_size=50,
+            ask_price=100.0,
             current_time=self.current_time,
             trade_history=trade_history,
             cash_util=cash_util,

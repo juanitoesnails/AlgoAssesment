@@ -270,9 +270,9 @@ class OrderMatchingAlgo:
 
         # Check if there are no available sizes for buying or selling
         if (
-            ask_size == 0 and any(order.side == TradingSignal.SELL for order in orders)
+            bid_size == 0 and any(order.side == TradingSignal.SELL for order in orders)
         ) or (
-            bid_price == 0 and any(order.side == TradingSignal.BUY for order in orders)
+            ask_size == 0 and any(order.side == TradingSignal.BUY for order in orders)
         ):
             return self.exit_order_matching(
                 trade_history,
@@ -288,16 +288,17 @@ class OrderMatchingAlgo:
             if order.execution_time > current_time:
                 continue
 
-            if order.side == TradingSignal.BUY and bid_price <= order.limit_price:
-                trade_amount = min(order.order_size, bid_size)
-                bid_size -= trade_amount
-                traded_px = bid_price
-
-            elif order.side == TradingSignal.SELL and ask_price >= order.limit_price:
-                trade_amount = min(-order.order_size, ask_size)
+            if order.side == TradingSignal.BUY and ask_price <= order.limit_price:
+                trade_amount = min(order.order_size, ask_size)
                 ask_size -= trade_amount
-                trade_amount = trade_amount * -1
+
                 traded_px = ask_price
+
+            elif order.side == TradingSignal.SELL and bid_price >= order.limit_price:
+                trade_amount = min(-order.order_size, bid_size)
+                bid_size -= trade_amount
+                trade_amount = trade_amount * -1
+                traded_px = bid_price
 
             else:
                 continue
