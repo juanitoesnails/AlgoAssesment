@@ -222,7 +222,6 @@ class CreateOrdersAlgo:
             return None
 
 
-# Matching Algo
 class ExecutionReport:
     def __init__(
         self,
@@ -269,33 +268,22 @@ class OrderMatchingAlgo:
         # Get orders from the order book
         orders = order_book.get_book()
 
-        # Create a shallow copy of orders to modify the original list while iterating
+        # Check if there are no available sizes for buying or selling
+        if (
+            ask_size == 0 and any(order.side == TradingSignal.SELL for order in orders)
+        ) or (
+            bid_price == 0 and any(order.side == TradingSignal.BUY for order in orders)
+        ):
+            return self.exit_order_matching(
+                trade_history,
+                cash_util,
+                open_pos,
+                execution_costs_per_contract,
+                order_book,
+            )
+
+        # Iterate over orders and execute them
         for order in orders[:]:
-            order_executed = False
-
-            # Check if there are no available sizes for buying or selling
-            if ask_size == 0 and any(
-                order.side == TradingSignal.SELL for order in orders
-            ):
-                return self.exit_order_matching(
-                    trade_history,
-                    cash_util,
-                    open_pos,
-                    execution_costs_per_contract,
-                    order_book,
-                )
-
-            if bid_price == 0 and any(
-                order.side == TradingSignal.BUY for order in orders
-            ):
-                return self.exit_order_matching(
-                    trade_history,
-                    cash_util,
-                    open_pos,
-                    execution_costs_per_contract,
-                    order_book,
-                )
-
             # Skip the order if the execution time has not been reached
             if order.execution_time > current_time:
                 continue
@@ -304,28 +292,28 @@ class OrderMatchingAlgo:
                 trade_amount = min(order.order_size, bid_size)
                 bid_size -= trade_amount
                 traded_px = bid_price
-                order_executed = True
 
             elif order.side == TradingSignal.SELL and ask_price >= order.limit_price:
                 trade_amount = min(-order.order_size, ask_size)
                 ask_size -= trade_amount
                 trade_amount = trade_amount * -1
                 traded_px = ask_price
-                order_executed = True
+
+            else:
+                continue
 
             # Update our variables if we executed
-            if order_executed:
-                order.order_size -= trade_amount
-                cash_util -= trade_amount * traded_px
-                execution_costs_per_contract = (
-                    abs(trade_amount) * execution_costs_per_contract
-                )
-                open_pos += trade_amount
-                trade_history.append(Trade(trade_amount, traded_px, current_time))
+            order.order_size -= trade_amount
+            cash_util -= trade_amount * traded_px
+            execution_costs_per_contract = (
+                abs(trade_amount) * execution_costs_per_contract
+            )
+            open_pos += trade_amount
+            trade_history.append(Trade(trade_amount, traded_px, current_time))
 
-                # If the order is fully filled, remove it from the order book
-                if order.order_size == 0:
-                    order_book.orders.remove(order)
+            # If the order is fully filled, remove it from the order book
+            if order.order_size == 0:
+                order_book.orders.remove(order)
 
         return self.exit_order_matching(
             trade_history, cash_util, open_pos, execution_costs_per_contract, order_book
