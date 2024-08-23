@@ -368,3 +368,242 @@ class DashboardMetrics:
             new_max_drawdown = max(current_max_draw_down.drawdown, drawdown)
 
         return MaxDrawDownInfo(drawdown=new_max_drawdown, peak=new_peak)
+
+
+class TradingAlgo:
+    def __init__(
+        self,
+        file_location: str,
+        moving_averages_params: MovingAveragesParameter,
+        bollinger_bands_params: BollingBandParameters,
+        initial_capital: int = 1000000,
+        max_risk: int = 0.1,
+        limit_order_pct: float = 0,
+        millisec_execution_delay: timedelta = timedelta(microseconds=0),
+        transaction_fees_per_contract: int = 0,
+    ):
+        self.initialize_reader(file_location)
+        self.initialize_parameters(moving_averages_params, bollinger_bands_params)
+        self.initialize_state(
+            initial_capital,
+            max_risk,
+            limit_order_pct,
+            millisec_execution_delay,
+            transaction_fees_per_contract,
+        )
+
+    def initialize_reader(self, file_location: str):
+        """Initialize the CSV reader."""
+        self.csv_iterator = pd.read_csv(
+            file_location,
+            usecols=[
+                "Date-Time",
+                "Type",
+                "Bid Price",
+                "Bid Size",
+                "Ask Price",
+                "Ask Size",
+            ],
+            chunksize=1,
+            parse_dates=["Date-Time"],
+            date_parser=lambda x: pd.to_datetime(x, errors="coerce"),
+        )
+        self.current_chunk = None
+
+    def initialize_parameters(self, moving_averages_params, bollinger_bands_params):
+        """Initialize the trading parameters."""
+        self.moving_averages_params = moving_averages_params
+        self.bollinger_bands_params = bollinger_bands_params
+        self.price_deque = deque(
+            maxlen=max(
+                self.moving_averages_params.long_rolling_window,
+                self.bollinger_bands_params.rolling_window,
+            )
+        )
+
+    def initialize_state(
+        self,
+        initial_capital: int,
+        max_risk: float,
+        limit_order_pct: float,
+        millisec_execution_delay: timedelta,
+        transaction_fees_per_contract: int,
+    ):
+        """Initialize the trading state and metrics."""
+        # Market data
+        self.date_time = None
+        self.bid_price = None
+        self.bid_size = None
+        self.ask_price = None
+        self.ask_size = None
+        self.signal = None
+        self.mid_price = None
+
+        # Financial metrics
+        self.initial_capital = initial_capital
+        self.book_value = initial_capital
+        self.cash_utils = 0
+        self.open_pos = 0
+        self.pnl = None
+
+        # Order and trade management
+        self.order_book = OrderBook()
+        self.trade_history = deque(maxlen=MAX_LENGTH_TRADE_HISTORY_DEQUE)
+        self.limit_order_pct = limit_order_pct
+        self.millisec_execution_delay = millisec_execution_delay
+        self.max_risk = max_risk
+
+        # Transaction costs
+        self.transaction_fees = transaction_fees_per_contract
+        self.trading_costs = 0
+        self.total_transaction_costs = 0
+
+        # Risk metrics
+        self.max_draw_down = MaxDrawDown(0, 0)
+
+    def read_next_line(self):
+        """Read the next line from the CSV file."""
+        if self.current_chunk is None or len(self.current_chunk) == 0:
+            try:
+                self.current_chunk = next(self.csv_iterator)
+            except StopIteration:
+                return False
+
+        return True
+
+    def process_row(self, row: pd.Series):
+        """Process a single row of data."""
+        self.date_time = row["Date-Time"]
+        self.bid_price = row["Bid Price"]
+        self.bid_size = row["Bid Size"]
+        self.ask_price = row["Ask Price"]
+        self.ask_size = row["Ask Size"]
+        self.mid_price = (self.bid_price + self.ask_price) / 2
+
+        self.price_deque.append(self.mid_price)
+
+    def calculate_signals(self):
+        """Calculate trading signals."""
+        prices_df = pd.DataFrame(list(self.price_deque))
+        signal_generator = SignalGenerator()
+
+        stop_loss_signal = signal_generator.calculate_bollinger_bands_signal(
+            prices_df, self.bollinger_bands_params, self.mid_price
+        )
+        trading_signal = signal_generator.calculate_moving_averages_signal(
+            prices_df, self.moving_averages_params
+        )
+
+        return trading_signal, stop_loss_signal
+
+    def create_and_execute_order(self, trading_signal, stop_loss_signal):
+        """Create and execute orders based on the signals."""
+        if new_order := CreateOrdersAlgo(
+            trading_signal,
+            stop_loss_signal,
+            self.limit_order_pct,
+            self.millisec_execution_delay,
+            self.open_pos,
+            self.max_risk,
+            self.mid_price,
+            self.book_value,
+            self.date_time,
+        ).create_order():
+            self.order_book.add_order(new_order)
+
+        execution_report = OrderMatchingAlgo().execute_orders(
+            self.order_book,
+            self.bid_size,
+            self.bid_price,
+            self.ask_size,
+            self.ask_price,
+            self.date_time,
+            self.trade_history,
+            self.cash_utils,
+            self.transaction_fees,
+            self.open_pos,
+        )
+
+        self.update_state(execution_report)
+
+    def update_state(self, execution_report: ExecutionReport):
+        """Update the state based on the execution report."""
+        self.order_book = execution_report.order_book
+        self.trade_history = execution_report.trade_history
+
+        self.cash_utils = execution_report.cash_util
+        self.open_pos = execution_report.open_pos
+        self.execution_costs = execution_report.execution_costs
+
+    def update_metrics(self):
+        """Update PnL and other dashboard metrics."""
+        self.pnl = DashboardMetrics().calculate_pnl(
+            open_pos=self.open_pos,
+            px_mid=self.mid_price,
+            cash_utils=self.cash_utils,
+            trading_costs=self.execution_costs,
+        )
+        self.book_value = self.initial_capital + self.pnl
+
+        self.df_trade_history = DashboardMetrics().get_trade_history_df(
+            self.trade_history
+        )
+
+        self.max_draw_down = DashboardMetrics().update_max_drawdown(
+            self.max_draw_down, self.book_value
+        )
+
+    def go_to_next_line(self):
+        """Main loop to go to the next line and process it."""
+        if not self.read_next_line():
+            return False
+
+        while len(self.current_chunk) > 0:
+            row = self.current_chunk.iloc[0]
+
+            if row["Type"] != "Quote":
+                self.current_chunk = self.current_chunk.iloc[1:]
+                continue
+
+            self.process_row(row)
+
+            trading_signal, stop_loss_signal = self.calculate_signals()
+
+            self.create_and_execute_order(trading_signal, stop_loss_signal)
+
+            self.update_metrics()
+
+            self.current_chunk = self.current_chunk.iloc[1:]
+
+            print(
+                f"Pnl: {self.pnl}, Drawdown: {self.max_draw_down.drawdown}, OpenPos: {self.open_pos}, "
+                f"Trades_Stored: {len(self.trade_history)}, Trade-cost: {self.execution_costs}, "
+                f"Unfilled Orders: {self.order_book.sum_unfulfilled_orders()}"
+            )
+            return True
+
+        return self.go_to_next_line()
+
+    def close(self):
+        """Clean up resources."""
+        self.csv_iterator = None
+        self.current_chunk = None
+
+
+if __name__ == "__main__":
+    reader = TradingAlgo(
+        file_location="X:\\Public\\MTC\\BU Juan\\example_data_set.csv",
+        moving_averages_params=MovingAveragesParameter((13, 8, 5)),
+        bollinger_bands_params=BollingBandParameters((13, 3)),
+        initial_capital=1_000_000,
+        max_risk=0.1,
+        limit_order_pct=0.15,
+        millisec_execution_delay=timedelta(microseconds=5),
+        transaction_fees_per_contract=1,
+    )
+
+    try:
+        while reader.go_to_next_line():
+            print("Processed new line")
+    finally:
+        reader.close()
