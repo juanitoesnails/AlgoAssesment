@@ -410,6 +410,7 @@ class DashBoardData:
 class TradingAlgo:
     def __init__(
         self,
+        file_location: None,
         moving_averages_params: MovingAveragesParameter,
         bollinger_bands_params: BollingBandParameters,
         initial_capital: int = 1000000,
@@ -418,7 +419,7 @@ class TradingAlgo:
         millisec_execution_delay: timedelta = timedelta(microseconds=0),
         transaction_fees_per_contract: int = 0,
     ):
-        self.initialize_reader()
+        self.initialize_reader(file_location)
         self.initialize_parameters(moving_averages_params, bollinger_bands_params)
         self.initialize_state(
             initial_capital,
@@ -428,10 +429,10 @@ class TradingAlgo:
             transaction_fees_per_contract,
         )
 
-    def initialize_reader(self):
+    def initialize_reader(self, filelocation):
         """Initialize the CSV reader."""
         self.csv_iterator = pd.read_csv(
-            "C:\\Users\\juane\\Documents\\Python\\Baraktest\\src\\trading_algo\\trading_data.csv",
+            "C:\\Users\\juane\\Documents\\Python\\Baraktest\\src\\trading_data.csv",
             usecols=[
                 "Date-Time",
                 "Type",
@@ -636,6 +637,7 @@ class TradingAlgo:
 
 if __name__ == "__main__":
     trading_algo = TradingAlgo(
+        file_location=None,
         moving_averages_params=MovingAveragesParameter(2, 5, 8),
         bollinger_bands_params=BollingBandParameters(13, 3),
         initial_capital=1000,
