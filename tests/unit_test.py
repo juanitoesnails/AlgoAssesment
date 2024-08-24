@@ -5,6 +5,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 from collections import deque
 
+from unittest.mock import MagicMock, patch
+
+
 # Add the 'src' directory to the Python path
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -26,6 +29,8 @@ from trading_algo import (
     Trade,
     TRADE_HISTORY_COLUMNS,
     DashBoardData,
+    TradingAlgo,
+    MetricsCalculator,
 )
 
 
@@ -609,7 +614,130 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         )  # Order not fully executed, should remain in the book
 
 
-### Dashboard Metrics ###
+class TestTradingAlgo(unittest.TestCase):
+
+    @patch("pandas.read_csv")  # Mocking pandas read_csv
+    def setUp(self, mock_read_csv):
+        # Mock the dependencies
+        self.mock_moving_averages_params = MagicMock()
+        self.mock_moving_averages_params.long_rolling_window = 10
+
+        self.mock_bollinger_bands_params = MagicMock()
+        self.mock_bollinger_bands_params.rolling_window = 5
+
+        self.mock_order_book = MagicMock()
+        self.mock_signal_generator = MagicMock()
+        self.mock_create_orders_algo = MagicMock()
+        self.mock_order_matching_algo = MagicMock()
+        self.mock_metrics_calculator = MagicMock()
+        self.mock_execution_report = MagicMock()
+
+        self.mock_max_draw_down = MagicMock()
+
+        # Mock read_csv to return a mock iterator
+        mock_read_csv.return_value = iter(
+            [
+                pd.DataFrame(
+                    {
+                        "Date-Time": pd.to_datetime(["2024-08-24 10:00:00"]),
+                        "Type": ["Quote"],
+                        "Bid Price": [100],
+                        "Bid Size": [10],
+                        "Ask Price": [101],
+                        "Ask Size": [12],
+                    }
+                )
+            ]
+        )
+
+        # Initialize the class with mocks
+        self.trading_algo = TradingAlgo(
+            file_location="mock_file.csv",
+            moving_averages_params=self.mock_moving_averages_params,
+            bollinger_bands_params=self.mock_bollinger_bands_params,
+            initial_capital=1000000,
+            max_risk=0.1,
+            limit_order_pct=0,
+            millisec_execution_delay=timedelta(microseconds=0),
+            transaction_fees_per_contract=0,
+        )
+
+    def test_initialize_reader(self):
+        """Test if the CSV reader is initialized correctly."""
+        self.assertIsNotNone(self.trading_algo.csv_iterator)
+        self.assertIsNone(self.trading_algo.current_chunk)
+
+    def test_initialize_parameters(self):
+        """Test if trading parameters are initialized correctly."""
+        self.assertEqual(
+            self.trading_algo.moving_averages_params, self.mock_moving_averages_params
+        )
+        self.assertEqual(
+            self.trading_algo.bollinger_bands_params, self.mock_bollinger_bands_params
+        )
+        self.assertIsInstance(self.trading_algo.price_deque, deque)
+        self.assertEqual(self.trading_algo.price_deque.maxlen, 10)
+
+    def test_initialize_state(self):
+        """Test if the trading state and metrics are initialized correctly."""
+        self.assertEqual(self.trading_algo.initial_capital, 1000000)
+        self.assertEqual(self.trading_algo.book_value, 1000000)
+        self.assertEqual(self.trading_algo.cash_utils, 0)
+        self.assertEqual(self.trading_algo.open_pos, 0)
+        self.assertEqual(self.trading_algo.pnl, 0)
+        self.assertEqual(self.trading_algo.limit_order_pct, 0)
+        self.assertEqual(
+            self.trading_algo.millisec_execution_delay, timedelta(microseconds=0)
+        )
+        self.assertEqual(self.trading_algo.max_risk, 0.1)
+        self.assertEqual(self.trading_algo.transaction_fees, 0)
+        self.assertEqual(self.trading_algo.trading_costs, 0)
+        self.assertEqual(self.trading_algo.total_transaction_costs, 0)
+        self.assertIsNotNone(self.trading_algo.max_draw_down)
+
+    @patch.object(TradingAlgo, "process_row")
+    def test_read_next_line(self, mock_process_row):
+        """Test reading the next line from the CSV."""
+        result = self.trading_algo.read_next_line()
+        self.assertTrue(result)
+        self.assertIsNotNone(self.trading_algo.current_chunk)
+
+    @patch.object(TradingAlgo, "calculate_signals")
+    @patch.object(TradingAlgo, "create_and_execute_order")
+    @patch.object(TradingAlgo, "update_metrics")
+    @patch.object(TradingAlgo, "get_dashboard_data")
+    def test_go_to_next_line(
+        self,
+        mock_get_dashboard_data,
+        mock_update_metrics,
+        mock_create_and_execute_order,
+        mock_calculate_signals,
+    ):
+        """Test processing the next line of data."""
+        mock_calculate_signals.return_value = ("buy_signal", "stop_loss_signal")
+
+        result = self.trading_algo.go_to_next_line()
+
+        self.assertTrue(result)
+        self.assertTrue(mock_calculate_signals.called)
+        self.assertTrue(mock_create_and_execute_order.called)
+        self.assertTrue(mock_update_metrics.called)
+        self.assertTrue(mock_get_dashboard_data.called)
+
+    @patch.object(TradingAlgo, "create_and_execute_order")
+    def test_create_and_execute_order(self, mock_create_and_execute_order):
+        """Test the order creation and execution."""
+        trading_signal = "buy"
+        stop_loss_signal = "stop_loss"
+
+        # Here, you can simulate different signals and check how the method behaves
+        self.trading_algo.create_and_execute_order(trading_signal, stop_loss_signal)
+        self.assertTrue(mock_create_and_execute_order.called)
+
+    def test_get_dashboard_data(self):
+        """Test if the dashboard data is returned correctly."""
+        dashboard_data = self.trading_algo.get_dashboard_data()
+        self.assertIsInstance(dashboard_data, DashBoardData)
 
 
 if __name__ == "__main__":

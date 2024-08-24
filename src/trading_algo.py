@@ -482,7 +482,7 @@ class TradingAlgo:
         self.book_value = initial_capital
         self.cash_utils = 0
         self.open_pos = 0
-        self.pnl = None
+        self.pnl = 0
 
         # Order and trade management
         self.order_book = OrderBook()
