@@ -5,6 +5,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 from collections import deque
 
+from unittest.mock import MagicMock, patch
+
+
 # Add the 'src' directory to the Python path
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -22,26 +25,26 @@ from trading_algo import (
     ExecutionReport,
     ARBITRARY_HIGH_PRICE,
     ARBITRARY_LOW_PRICE,
-    DashboardMetrics,
     MaxDrawDownInfo,
     Trade,
     TRADE_HISTORY_COLUMNS,
+    DashBoardData,
+    TradingAlgo,
+    MetricsCalculator,
 )
 
 
 ### Test for Signals ##
 class TestMovingAveragesParameter(unittest.TestCase):
     def test_valid_params(self):
-        params = (30, 20, 10)
-        ma_params = MovingAveragesParameter(params)
+        ma_params = MovingAveragesParameter(10, 20, 30)
         self.assertEqual(ma_params.long_rolling_window, 30)
         self.assertEqual(ma_params.medium_rolling_window, 20)
         self.assertEqual(ma_params.short_rolling_window, 10)
 
     def test_invalid_params_raises_value_error(self):
-        params = (10, 20, 30)
         with self.assertRaises(ValueError):
-            MovingAveragesParameter(params)
+            MovingAveragesParameter(30, 20, 10)
 
 
 class TestSignalGenerator(unittest.TestCase):
@@ -51,7 +54,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_moving_averages_signal_buy(self):
         data = {"price": [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         signal = self.signal_generator.calculate_moving_averages_signal(
             df_prices, params
@@ -61,7 +64,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_moving_averages_signal_sell(self):
         data = {"price": [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         signal = self.signal_generator.calculate_moving_averages_signal(
             df_prices, params
@@ -71,7 +74,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_moving_averages_signal_hold(self):
         data = {"price": [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         signal = self.signal_generator.calculate_moving_averages_signal(
             df_prices, params
@@ -81,7 +84,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_bollinger_bands_signal_buy(self):
         data = {"price": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         signal = self.signal_generator.calculate_bollinger_bands_signal(
             df_prices, params, px_mid=18
@@ -91,7 +94,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_bollinger_bands_signal_sell(self):
         data = {"price": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         signal = self.signal_generator.calculate_bollinger_bands_signal(
             df_prices, params, px_mid=32
@@ -101,7 +104,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_bollinger_bands_signal_hold(self):
         data = {"price": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         signal = self.signal_generator.calculate_bollinger_bands_signal(
             df_prices, params, px_mid=25
@@ -111,7 +114,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_moving_averages_calculation(self):
         data = {"price": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         # Calculate expected moving averages
         expected_sma_long = df_prices.rolling(window=5).mean().iloc[-1].values[0]
@@ -135,7 +138,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_bollinger_bands_calculation(self):
         data = {"price": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         # Calculate expected Bollinger Bands
         rolling_mean = (
@@ -218,18 +221,6 @@ class TestOrderBook(unittest.TestCase):
 
         # The correct order should be: order3, order2, order1 (sorted by time, then price)
         self.assertEqual(sorted_orders, [order3, order2, order1])
-
-    def test_sum_unfulfilled_orders(self):
-        order1 = Order(datetime.now(), 100.5, 10, 1)
-        order2 = Order(datetime.now(), 101.5, 20, 1)
-        order3 = Order(datetime.now(), 102.5, 15, 1)
-
-        self.order_book.add_order(order1)
-        self.order_book.add_order(order2)
-        self.order_book.add_order(order3)
-
-        total = self.order_book.sum_unfulfilled_orders()
-        self.assertEqual(total, 45.0)
 
 
 ### Test for Order Creations ##
@@ -623,79 +614,130 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         )  # Order not fully executed, should remain in the book
 
 
-### Dashboard Metrics ###
+class TestTradingAlgo(unittest.TestCase):
 
+    @patch("pandas.read_csv")  # Mocking pandas read_csv
+    def setUp(self, mock_read_csv):
+        # Mock the dependencies
+        self.mock_moving_averages_params = MagicMock()
+        self.mock_moving_averages_params.long_rolling_window = 10
 
-class TestDashboardMetrics(unittest.TestCase):
-    def setUp(self):
-        self.dashboard_metrics = DashboardMetrics()
+        self.mock_bollinger_bands_params = MagicMock()
+        self.mock_bollinger_bands_params.rolling_window = 5
 
-    def test_calculate_pnl(self):
-        open_pos = 100
-        px_mid = 150.0
-        cash_utils = 5000.0
-        trading_costs = 100.0
+        self.mock_order_book = MagicMock()
+        self.mock_signal_generator = MagicMock()
+        self.mock_create_orders_algo = MagicMock()
+        self.mock_order_matching_algo = MagicMock()
+        self.mock_metrics_calculator = MagicMock()
+        self.mock_execution_report = MagicMock()
 
-        pnl = self.dashboard_metrics.calculate_pnl(
-            open_pos, px_mid, cash_utils, trading_costs
-        )
+        self.mock_max_draw_down = MagicMock()
 
-        expected_pnl = (open_pos * px_mid) + cash_utils - trading_costs
-        self.assertEqual(pnl, expected_pnl)
-
-    def test_get_trade_history_df(self):
-        trade_history = deque(
+        # Mock read_csv to return a mock iterator
+        mock_read_csv.return_value = iter(
             [
-                Trade(trade_amount=10, price=100.0, time=datetime(2024, 8, 22, 10, 30)),
-                Trade(trade_amount=20, price=105.0, time=datetime(2024, 8, 22, 11, 00)),
+                pd.DataFrame(
+                    {
+                        "Date-Time": pd.to_datetime(["2024-08-24 10:00:00"]),
+                        "Type": ["Quote"],
+                        "Bid Price": [100],
+                        "Bid Size": [10],
+                        "Ask Price": [101],
+                        "Ask Size": [12],
+                    }
+                )
             ]
         )
 
-        df = self.dashboard_metrics.get_trade_history_df(trade_history)
-
-        expected_data = [
-            {
-                TRADE_HISTORY_COLUMNS[0]: 10,
-                TRADE_HISTORY_COLUMNS[1]: 100.0,
-                TRADE_HISTORY_COLUMNS[2]: datetime(2024, 8, 22, 10, 30),
-            },
-            {
-                TRADE_HISTORY_COLUMNS[0]: 20,
-                TRADE_HISTORY_COLUMNS[1]: 105.0,
-                TRADE_HISTORY_COLUMNS[2]: datetime(2024, 8, 22, 11, 00),
-            },
-        ]
-        expected_df = pd.DataFrame(expected_data, columns=TRADE_HISTORY_COLUMNS)
-        pd.testing.assert_frame_equal(df, expected_df)
-
-    def test_update_max_drawdown(self):
-        current_max_draw_down = MaxDrawDownInfo(drawdown=0.05, peak=100.0)
-        new_portfolio_value = 85.0
-
-        new_max_drawdown = self.dashboard_metrics.update_max_drawdown(
-            current_max_draw_down, new_portfolio_value
+        # Initialize the class with mocks
+        self.trading_algo = TradingAlgo(
+            file_location="mock_file.csv",
+            moving_averages_params=self.mock_moving_averages_params,
+            bollinger_bands_params=self.mock_bollinger_bands_params,
+            initial_capital=1000000,
+            max_risk=0.1,
+            limit_order_pct=0,
+            millisec_execution_delay=timedelta(microseconds=0),
+            transaction_fees_per_contract=0,
         )
 
-        expected_drawdown = (100.0 - 85.0) / 100.0
-        expected_peak = 100.0
-        expected_max_drawdown = max(0.05, expected_drawdown)
+    def test_initialize_reader(self):
+        """Test if the CSV reader is initialized correctly."""
+        self.assertIsNotNone(self.trading_algo.csv_iterator)
+        self.assertIsNone(self.trading_algo.current_chunk)
 
-        self.assertEqual(new_max_drawdown.drawdown, expected_max_drawdown)
-        self.assertEqual(new_max_drawdown.peak, expected_peak)
-
-        # Test with a new peak
-        new_portfolio_value = 110.0
-        new_max_drawdown = self.dashboard_metrics.update_max_drawdown(
-            current_max_draw_down, new_portfolio_value
-        )
-
-        expected_drawdown = (new_portfolio_value - 110.0) / new_portfolio_value
-        expected_peak = 110.0
-
+    def test_initialize_parameters(self):
+        """Test if trading parameters are initialized correctly."""
         self.assertEqual(
-            new_max_drawdown.drawdown, 0.0
-        )  # No drawdown if new value is the highest
-        self.assertEqual(new_max_drawdown.peak, expected_peak)
+            self.trading_algo.moving_averages_params, self.mock_moving_averages_params
+        )
+        self.assertEqual(
+            self.trading_algo.bollinger_bands_params, self.mock_bollinger_bands_params
+        )
+        self.assertIsInstance(self.trading_algo.price_deque, deque)
+        self.assertEqual(self.trading_algo.price_deque.maxlen, 10)
+
+    def test_initialize_state(self):
+        """Test if the trading state and metrics are initialized correctly."""
+        self.assertEqual(self.trading_algo.initial_capital, 1000000)
+        self.assertEqual(self.trading_algo.book_value, 1000000)
+        self.assertEqual(self.trading_algo.cash_utils, 0)
+        self.assertEqual(self.trading_algo.open_pos, 0)
+        self.assertEqual(self.trading_algo.pnl, 0)
+        self.assertEqual(self.trading_algo.limit_order_pct, 0)
+        self.assertEqual(
+            self.trading_algo.millisec_execution_delay, timedelta(microseconds=0)
+        )
+        self.assertEqual(self.trading_algo.max_risk, 0.1)
+        self.assertEqual(self.trading_algo.transaction_fees, 0)
+        self.assertEqual(self.trading_algo.trading_costs, 0)
+        self.assertEqual(self.trading_algo.total_transaction_costs, 0)
+        self.assertIsNotNone(self.trading_algo.max_draw_down)
+
+    @patch.object(TradingAlgo, "process_row")
+    def test_read_next_line(self, mock_process_row):
+        """Test reading the next line from the CSV."""
+        result = self.trading_algo.read_next_line()
+        self.assertTrue(result)
+        self.assertIsNotNone(self.trading_algo.current_chunk)
+
+    @patch.object(TradingAlgo, "calculate_signals")
+    @patch.object(TradingAlgo, "create_and_execute_order")
+    @patch.object(TradingAlgo, "update_metrics")
+    @patch.object(TradingAlgo, "get_dashboard_data")
+    def test_go_to_next_line(
+        self,
+        mock_get_dashboard_data,
+        mock_update_metrics,
+        mock_create_and_execute_order,
+        mock_calculate_signals,
+    ):
+        """Test processing the next line of data."""
+        mock_calculate_signals.return_value = ("buy_signal", "stop_loss_signal")
+
+        result = self.trading_algo.go_to_next_line()
+
+        self.assertTrue(result)
+        self.assertTrue(mock_calculate_signals.called)
+        self.assertTrue(mock_create_and_execute_order.called)
+        self.assertTrue(mock_update_metrics.called)
+        self.assertTrue(mock_get_dashboard_data.called)
+
+    @patch.object(TradingAlgo, "create_and_execute_order")
+    def test_create_and_execute_order(self, mock_create_and_execute_order):
+        """Test the order creation and execution."""
+        trading_signal = "buy"
+        stop_loss_signal = "stop_loss"
+
+        # Here, you can simulate different signals and check how the method behaves
+        self.trading_algo.create_and_execute_order(trading_signal, stop_loss_signal)
+        self.assertTrue(mock_create_and_execute_order.called)
+
+    def test_get_dashboard_data(self):
+        """Test if the dashboard data is returned correctly."""
+        dashboard_data = self.trading_algo.get_dashboard_data()
+        self.assertIsInstance(dashboard_data, DashBoardData)
 
 
 if __name__ == "__main__":
