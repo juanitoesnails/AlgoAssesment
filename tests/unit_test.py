@@ -22,7 +22,6 @@ from trading_algo import (
     ExecutionReport,
     ARBITRARY_HIGH_PRICE,
     ARBITRARY_LOW_PRICE,
-    DashboardMetrics,
     MaxDrawDownInfo,
     Trade,
     TRADE_HISTORY_COLUMNS,
