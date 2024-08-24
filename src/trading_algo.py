@@ -4,12 +4,14 @@ from operator import attrgetter
 from enum import Enum
 from collections import deque
 
+
 # We will use these two for limits prices when executing market
 ARBITRARY_HIGH_PRICE = 100_000_000
 ARBITRARY_LOW_PRICE = 0
 
 # Columns for Dataframe
 TRADE_HISTORY_COLUMNS = ["Trade Amount", "Price", "Time"]
+MAX_LENGTH_TRADE_HISTORY_DEQUE = 10
 
 
 class Side(Enum):
@@ -40,12 +42,12 @@ class BollingBandParameters:
 class MovingAveragesParameter:
     def __init__(self, moving_averages_params: tuple[int, int, int]) -> None:
         self.validate_params(moving_averages_params)
-        self.long_rolling_window = moving_averages_params[0]
+        self.long_rolling_window = moving_averages_params[2]
         self.medium_rolling_window = moving_averages_params[1]
-        self.short_rolling_window = moving_averages_params[2]
+        self.short_rolling_window = moving_averages_params[0]
 
     def validate_params(self, params: tuple[int, int, int]) -> None:
-        if not (params[0] > params[1] > params[2]):
+        if not (params[2] > params[1] > params[0]):
             raise ValueError(
                 "Invalid arguments: The values must be in descending order (long > medium > short)"
             )
@@ -144,8 +146,18 @@ class OrderBook:
     def get_book(self) -> list[Order]:
         return self.orders
 
-    def sum_unfulfilled_orders(self) -> float:
-        return sum(order.order_size for order in self.orders)
+    def get_orderbook_dataframe(self) -> pd.DataFrame:
+        # Convert the list of orders to a list of dictionaries
+        orders_data = [
+            {
+                "Execution Time": order.execution_time,
+                "Limit Price": order.limit_price,
+                "Order Size": order.order_size,
+                "Side": order.side,
+            }
+            for order in self.orders
+        ]
+        return pd.DataFrame(orders_data)
 
 
 # Takes Signals and Converts them into Objects
@@ -331,7 +343,7 @@ class MaxDrawDownInfo:
 
 
 # Calculate_Data_for_Dashboard
-class DashboardMetrics:
+class MetricsCalculator:
     def calculate_pnl(
         self, open_pos: int, px_mid: float, cash_utils: float, trading_costs: float
     ):
@@ -370,6 +382,27 @@ class DashboardMetrics:
         return MaxDrawDownInfo(drawdown=new_max_drawdown, peak=new_peak)
 
 
+class DashBoardData:
+    def __init__(
+        self,
+        current_price: float,
+        current_pnl: float,
+        open_pos: int,
+        current_trading_costs: float,
+        current_max_drawdown: float,
+        current_unfilled_trades: pd.DataFrame,
+        df_last_trades: pd.DataFrame,
+    ) -> None:
+        self.current_pnl = current_pnl
+        self.current_price = current_price
+        self.open_pos = open_pos
+        self.current_trading_costs = current_trading_costs
+        self.pnl_exc_trading_costs = current_pnl - current_trading_costs
+        self.current_max_drawdown = current_max_drawdown
+        self.current_unfilled_trades = current_unfilled_trades
+        self.df_last_trades = df_last_trades
+
+
 class TradingAlgo:
     def __init__(
         self,
@@ -406,11 +439,16 @@ class TradingAlgo:
             ],
             chunksize=1,
             parse_dates=["Date-Time"],
-            date_parser=lambda x: pd.to_datetime(x, errors="coerce"),
+            date_format="%Y-%m-%dT%H:%M:%S.%f%z",
         )
+
         self.current_chunk = None
 
-    def initialize_parameters(self, moving_averages_params, bollinger_bands_params):
+    def initialize_parameters(
+        self,
+        moving_averages_params: MovingAveragesParameter,
+        bollinger_bands_params: BollingBandParameters,
+    ):
         """Initialize the trading parameters."""
         self.moving_averages_params = moving_averages_params
         self.bollinger_bands_params = bollinger_bands_params
@@ -459,7 +497,7 @@ class TradingAlgo:
         self.total_transaction_costs = 0
 
         # Risk metrics
-        self.max_draw_down = MaxDrawDown(0, 0)
+        self.max_draw_down = MaxDrawDownInfo(0, 0)
 
     def read_next_line(self):
         """Read the next line from the CSV file."""
@@ -537,7 +575,7 @@ class TradingAlgo:
 
     def update_metrics(self):
         """Update PnL and other dashboard metrics."""
-        self.pnl = DashboardMetrics().calculate_pnl(
+        self.pnl = MetricsCalculator().calculate_pnl(
             open_pos=self.open_pos,
             px_mid=self.mid_price,
             cash_utils=self.cash_utils,
@@ -545,12 +583,20 @@ class TradingAlgo:
         )
         self.book_value = self.initial_capital + self.pnl
 
-        self.df_trade_history = DashboardMetrics().get_trade_history_df(
-            self.trade_history
+        self.max_draw_down = MetricsCalculator().update_max_drawdown(
+            self.max_draw_down, self.book_value
         )
 
-        self.max_draw_down = DashboardMetrics().update_max_drawdown(
-            self.max_draw_down, self.book_value
+    def get_dashboard_data(self) -> DashBoardData:
+
+        return DashBoardData(
+            current_pnl=self.pnl,
+            current_price=self.mid_price,
+            open_pos=self.open_pos,
+            current_trading_costs=self.trading_costs,
+            current_max_drawdown=self.max_draw_down.drawdown,
+            current_unfilled_trades=self.order_book.get_orderbook_dataframe(),
+            df_last_trades=MetricsCalculator().get_trade_history_df(self.trade_history),
         )
 
     def go_to_next_line(self):
@@ -573,37 +619,8 @@ class TradingAlgo:
 
             self.update_metrics()
 
+            self.get_dashboard_data()
             self.current_chunk = self.current_chunk.iloc[1:]
-
-            print(
-                f"Pnl: {self.pnl}, Drawdown: {self.max_draw_down.drawdown}, OpenPos: {self.open_pos}, "
-                f"Trades_Stored: {len(self.trade_history)}, Trade-cost: {self.execution_costs}, "
-                f"Unfilled Orders: {self.order_book.sum_unfulfilled_orders()}"
-            )
             return True
 
-        return self.go_to_next_line()
-
-    def close(self):
-        """Clean up resources."""
-        self.csv_iterator = None
-        self.current_chunk = None
-
-
-if __name__ == "__main__":
-    reader = TradingAlgo(
-        file_location="X:\\Public\\MTC\\BU Juan\\example_data_set.csv",
-        moving_averages_params=MovingAveragesParameter((13, 8, 5)),
-        bollinger_bands_params=BollingBandParameters((13, 3)),
-        initial_capital=1_000_000,
-        max_risk=0.1,
-        limit_order_pct=0.15,
-        millisec_execution_delay=timedelta(microseconds=5),
-        transaction_fees_per_contract=1,
-    )
-
-    try:
-        while reader.go_to_next_line():
-            print("Processed new line")
-    finally:
-        reader.close()
+        return self.go_t
