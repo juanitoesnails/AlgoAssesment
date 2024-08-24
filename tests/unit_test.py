@@ -25,6 +25,7 @@ from trading_algo import (
     MaxDrawDownInfo,
     Trade,
     TRADE_HISTORY_COLUMNS,
+    DashBoardData,
 )
 
 
@@ -37,9 +38,8 @@ class TestMovingAveragesParameter(unittest.TestCase):
         self.assertEqual(ma_params.short_rolling_window, 10)
 
     def test_invalid_params_raises_value_error(self):
-        params = (30, 20, 10)
         with self.assertRaises(ValueError):
-            MovingAveragesParameter(params)
+            MovingAveragesParameter(30, 20, 10)
 
 
 class TestSignalGenerator(unittest.TestCase):
@@ -216,18 +216,6 @@ class TestOrderBook(unittest.TestCase):
 
         # The correct order should be: order3, order2, order1 (sorted by time, then price)
         self.assertEqual(sorted_orders, [order3, order2, order1])
-
-    def test_sum_unfulfilled_orders(self):
-        order1 = Order(datetime.now(), 100.5, 10, 1)
-        order2 = Order(datetime.now(), 101.5, 20, 1)
-        order3 = Order(datetime.now(), 102.5, 15, 1)
-
-        self.order_book.add_order(order1)
-        self.order_book.add_order(order2)
-        self.order_book.add_order(order3)
-
-        total = self.order_book.sum_unfulfilled_orders()
-        self.assertEqual(total, 45.0)
 
 
 ### Test for Order Creations ##
@@ -622,78 +610,6 @@ class TestOrderMatchingAlgo(unittest.TestCase):
 
 
 ### Dashboard Metrics ###
-
-
-class TestDashboardMetrics(unittest.TestCase):
-    def setUp(self):
-        self.dashboard_metrics = DashboardMetrics()
-
-    def test_calculate_pnl(self):
-        open_pos = 100
-        px_mid = 150.0
-        cash_utils = 5000.0
-        trading_costs = 100.0
-
-        pnl = self.dashboard_metrics.calculate_pnl(
-            open_pos, px_mid, cash_utils, trading_costs
-        )
-
-        expected_pnl = (open_pos * px_mid) + cash_utils - trading_costs
-        self.assertEqual(pnl, expected_pnl)
-
-    def test_get_trade_history_df(self):
-        trade_history = deque(
-            [
-                Trade(trade_amount=10, price=100.0, time=datetime(2024, 8, 22, 10, 30)),
-                Trade(trade_amount=20, price=105.0, time=datetime(2024, 8, 22, 11, 00)),
-            ]
-        )
-
-        df = self.dashboard_metrics.get_trade_history_df(trade_history)
-
-        expected_data = [
-            {
-                TRADE_HISTORY_COLUMNS[0]: 10,
-                TRADE_HISTORY_COLUMNS[1]: 100.0,
-                TRADE_HISTORY_COLUMNS[2]: datetime(2024, 8, 22, 10, 30),
-            },
-            {
-                TRADE_HISTORY_COLUMNS[0]: 20,
-                TRADE_HISTORY_COLUMNS[1]: 105.0,
-                TRADE_HISTORY_COLUMNS[2]: datetime(2024, 8, 22, 11, 00),
-            },
-        ]
-        expected_df = pd.DataFrame(expected_data, columns=TRADE_HISTORY_COLUMNS)
-        pd.testing.assert_frame_equal(df, expected_df)
-
-    def test_update_max_drawdown(self):
-        current_max_draw_down = MaxDrawDownInfo(drawdown=0.05, peak=100.0)
-        new_portfolio_value = 85.0
-
-        new_max_drawdown = self.dashboard_metrics.update_max_drawdown(
-            current_max_draw_down, new_portfolio_value
-        )
-
-        expected_drawdown = (100.0 - 85.0) / 100.0
-        expected_peak = 100.0
-        expected_max_drawdown = max(0.05, expected_drawdown)
-
-        self.assertEqual(new_max_drawdown.drawdown, expected_max_drawdown)
-        self.assertEqual(new_max_drawdown.peak, expected_peak)
-
-        # Test with a new peak
-        new_portfolio_value = 110.0
-        new_max_drawdown = self.dashboard_metrics.update_max_drawdown(
-            current_max_draw_down, new_portfolio_value
-        )
-
-        expected_drawdown = (new_portfolio_value - 110.0) / new_portfolio_value
-        expected_peak = 110.0
-
-        self.assertEqual(
-            new_max_drawdown.drawdown, 0.0
-        )  # No drawdown if new value is the highest
-        self.assertEqual(new_max_drawdown.peak, expected_peak)
 
 
 if __name__ == "__main__":

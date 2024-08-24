@@ -42,9 +42,9 @@ class BollingBandParameters:
 class MovingAveragesParameter:
     def __init__(self, small_window: int, medium_window: int, long_window: int) -> None:
         self.validate_params(small_window, medium_window, long_window)
-        self.long_rolling_window = medium_window
-        self.medium_rolling_window = small_window
-        self.short_rolling_window = long_window
+        self.long_rolling_window = long_window
+        self.medium_rolling_window = medium_window
+        self.short_rolling_window = small_window
 
     def validate_params(self, small_window, medium_window, long_window) -> None:
         if not (long_window > medium_window > small_window):
