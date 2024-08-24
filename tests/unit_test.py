@@ -31,14 +31,13 @@ from trading_algo import (
 ### Test for Signals ##
 class TestMovingAveragesParameter(unittest.TestCase):
     def test_valid_params(self):
-        params = (30, 20, 10)
-        ma_params = MovingAveragesParameter(params)
+        ma_params = MovingAveragesParameter(10, 20, 30)
         self.assertEqual(ma_params.long_rolling_window, 30)
         self.assertEqual(ma_params.medium_rolling_window, 20)
         self.assertEqual(ma_params.short_rolling_window, 10)
 
     def test_invalid_params_raises_value_error(self):
-        params = (10, 20, 30)
+        params = (30, 20, 10)
         with self.assertRaises(ValueError):
             MovingAveragesParameter(params)
 
@@ -50,7 +49,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_moving_averages_signal_buy(self):
         data = {"price": [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         signal = self.signal_generator.calculate_moving_averages_signal(
             df_prices, params
@@ -60,7 +59,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_moving_averages_signal_sell(self):
         data = {"price": [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         signal = self.signal_generator.calculate_moving_averages_signal(
             df_prices, params
@@ -70,7 +69,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_moving_averages_signal_hold(self):
         data = {"price": [15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         signal = self.signal_generator.calculate_moving_averages_signal(
             df_prices, params
@@ -80,7 +79,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_bollinger_bands_signal_buy(self):
         data = {"price": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         signal = self.signal_generator.calculate_bollinger_bands_signal(
             df_prices, params, px_mid=18
@@ -90,7 +89,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_bollinger_bands_signal_sell(self):
         data = {"price": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         signal = self.signal_generator.calculate_bollinger_bands_signal(
             df_prices, params, px_mid=32
@@ -100,7 +99,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_calculate_bollinger_bands_signal_hold(self):
         data = {"price": [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         signal = self.signal_generator.calculate_bollinger_bands_signal(
             df_prices, params, px_mid=25
@@ -110,7 +109,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_moving_averages_calculation(self):
         data = {"price": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
         df_prices = pd.DataFrame(data)
-        params = MovingAveragesParameter((5, 3, 2))
+        params = MovingAveragesParameter(2, 3, 5)
 
         # Calculate expected moving averages
         expected_sma_long = df_prices.rolling(window=5).mean().iloc[-1].values[0]
@@ -134,7 +133,7 @@ class TestSignalGenerator(unittest.TestCase):
     def test_bollinger_bands_calculation(self):
         data = {"price": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]}
         df_prices = pd.DataFrame(data)
-        params = BollingBandParameters((5, 2))
+        params = BollingBandParameters(5, 2)
 
         # Calculate expected Bollinger Bands
         rolling_mean = (

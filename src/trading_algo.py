@@ -34,20 +34,20 @@ class TradingSignal:
 
 # Trading Signal Objects
 class BollingBandParameters:
-    def __init__(self, bollinger_bands_params: tuple[int, int]) -> None:
-        self.rolling_window = bollinger_bands_params[0]
-        self.standard_deviations = bollinger_bands_params[1]
+    def __init__(self, rolling_window: int, sd_deviation: int) -> None:
+        self.rolling_window = rolling_window
+        self.standard_deviations = sd_deviation
 
 
 class MovingAveragesParameter:
-    def __init__(self, moving_averages_params: tuple[int, int, int]) -> None:
-        self.validate_params(moving_averages_params)
-        self.long_rolling_window = moving_averages_params[2]
-        self.medium_rolling_window = moving_averages_params[1]
-        self.short_rolling_window = moving_averages_params[0]
+    def __init__(self, small_window: int, medium_window: int, long_window: int) -> None:
+        self.validate_params(small_window, medium_window, long_window)
+        self.long_rolling_window = medium_window
+        self.medium_rolling_window = small_window
+        self.short_rolling_window = long_window
 
-    def validate_params(self, params: tuple[int, int, int]) -> None:
-        if not (params[2] > params[1] > params[0]):
+    def validate_params(self, small_window, medium_window, long_window) -> None:
+        if not (long_window > medium_window > small_window):
             raise ValueError(
                 "Invalid arguments: The values must be in descending order (long > medium > short)"
             )
