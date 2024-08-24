@@ -3,6 +3,10 @@ from datetime import datetime, timedelta
 from operator import attrgetter
 from enum import Enum
 from collections import deque
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
 
 # We will use these two for limits prices when executing market
@@ -406,7 +410,6 @@ class DashBoardData:
 class TradingAlgo:
     def __init__(
         self,
-        file_location: str,
         moving_averages_params: MovingAveragesParameter,
         bollinger_bands_params: BollingBandParameters,
         initial_capital: int = 1000000,
@@ -415,7 +418,7 @@ class TradingAlgo:
         millisec_execution_delay: timedelta = timedelta(microseconds=0),
         transaction_fees_per_contract: int = 0,
     ):
-        self.initialize_reader(file_location)
+        self.initialize_reader()
         self.initialize_parameters(moving_averages_params, bollinger_bands_params)
         self.initialize_state(
             initial_capital,
@@ -425,10 +428,10 @@ class TradingAlgo:
             transaction_fees_per_contract,
         )
 
-    def initialize_reader(self, file_location: str):
+    def initialize_reader(self):
         """Initialize the CSV reader."""
         self.csv_iterator = pd.read_csv(
-            file_location,
+            "C:\\Users\\juane\\Documents\\Python\\Baraktest\\src\\trading_algo\\trading_data.csv",
             usecols=[
                 "Date-Time",
                 "Type",
@@ -588,7 +591,7 @@ class TradingAlgo:
         )
 
     def get_dashboard_data(self) -> DashBoardData:
-
+        print(self.date_time)
         return DashBoardData(
             current_pnl=self.pnl,
             current_price=self.mid_price,
@@ -600,7 +603,7 @@ class TradingAlgo:
         )
 
     def go_to_next_line(self):
-        """Main loop to go to the next line and process it."""
+        """Main loop to go to the next line  process it."""
         if not self.read_next_line():
             return False
 
@@ -611,16 +614,35 @@ class TradingAlgo:
                 self.current_chunk = self.current_chunk.iloc[1:]
                 continue
 
+            logging.info("New Line")
             self.process_row(row)
 
+            logging.info("Processed Data")
             trading_signal, stop_loss_signal = self.calculate_signals()
 
+            logging.info("Got Trading Signals")
             self.create_and_execute_order(trading_signal, stop_loss_signal)
 
+            logging.info("Created an executed Orders")
             self.update_metrics()
 
+            logging.info("Created an executed Orders")
             self.get_dashboard_data()
             self.current_chunk = self.current_chunk.iloc[1:]
             return True
 
         return self.go_t
+
+
+if __name__ == "__main__":
+    trading_algo = TradingAlgo(
+        moving_averages_params=MovingAveragesParameter(2, 5, 8),
+        bollinger_bands_params=BollingBandParameters(13, 3),
+        initial_capital=1000,
+        max_risk=0.3,
+        limit_order_pct=15,
+        millisec_execution_delay=timedelta(milliseconds=1000),
+        transaction_fees_per_contract=0,
+    )
+    while True:
+        trading_algo.go_to_next_line()
