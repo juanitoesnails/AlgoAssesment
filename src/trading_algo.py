@@ -429,10 +429,10 @@ class TradingAlgo:
             transaction_fees_per_contract,
         )
 
-    def initialize_reader(self, filelocation):
+    def initialize_reader(self, file_location):
         """Initialize the CSV reader."""
         self.csv_iterator = pd.read_csv(
-            "C:\\Users\\juane\\Documents\\Python\\Baraktest\\src\\trading_data.csv",
+            file_location,
             usecols=[
                 "Date-Time",
                 "Type",
@@ -637,7 +637,7 @@ class TradingAlgo:
 
 if __name__ == "__main__":
     trading_algo = TradingAlgo(
-        file_location=None,
+        file_location="C:\\Users\\juane\\Documents\\Python\\Baraktest\\src\\trading_data.csv",
         moving_averages_params=MovingAveragesParameter(2, 5, 8),
         bollinger_bands_params=BollingBandParameters(13, 3),
         initial_capital=1000,
