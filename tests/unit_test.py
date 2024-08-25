@@ -3,7 +3,6 @@ import sys
 import unittest
 from collections import deque
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
@@ -13,12 +12,9 @@ sys.path.insert(
 )
 
 from trading_algo import (
-    ARBITRARY_HIGH_PRICE,
     ARBITRARY_LOW_PRICE,
     BollingBandParameters,
     CreateOrdersAlgo,
-    DashBoardData,
-    ExecutionReport,
     MaxDrawDownInfo,
     MetricsCalculator,
     MovingAveragesParameter,
@@ -27,10 +23,7 @@ from trading_algo import (
     OrderMatchingAlgo,
     Side,
     SignalGenerator,
-    TIME_FORMAT_STRING,
-    TRADE_HISTORY_COLUMNS,
     Trade,
-    TradingAlgo,
     TradingSignal,
 )
 
