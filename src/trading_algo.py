@@ -1,10 +1,12 @@
-import pandas as pd
-from datetime import datetime, timedelta
-from operator import attrgetter
-from enum import Enum
 from collections import deque
+from datetime import datetime, timedelta
+from enum import Enum
+from operator import attrgetter
 import logging
+
 import numpy as np
+import pandas as pd
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +22,16 @@ MAX_LENGTH_TRADE_HISTORY_DEQUE = 10
 
 # Time Formatting
 TIME_FORMAT_STRING = "%H:%M:%S"
+
+# Which columns to read from the CSV
+CSV_COLUMNS_TO_READ = [
+    "Date-Time",
+    "Type",
+    "Bid Price",
+    "Bid Size",
+    "Ask Price",
+    "Ask Size",
+]
 
 
 class Side(Enum):
@@ -162,7 +174,7 @@ class OrderBook:
                 "Execution Time": order.execution_time.strftime(TIME_FORMAT_STRING),
                 "Limit Price": order.limit_price,
                 "Unfilled Size": order.order_size,
-                "Side": ["Buy" if order.side == TradingSignal.BUY else "Sell"],
+                "Side": "Buy" if order.side == TradingSignal.BUY else "Sell",
             }
             for order in self.orders
         ]
@@ -279,9 +291,9 @@ class OrderMatchingAlgo:
         self,
         order_book: OrderBook,
         bid_size: int,
-        bid_price: int,
+        bid_price: float,
         ask_size: int,
-        ask_price: int,
+        ask_price: float,
         current_time: datetime,
         trade_history: deque[Trade],
         cash_util: float,
@@ -313,27 +325,26 @@ class OrderMatchingAlgo:
             if order.execution_time > current_time:
                 continue
 
-            if order.side == TradingSignal.BUY and ask_price <= order.limit_price:
-                trade_amount = min(order.order_size, ask_size)
-                ask_size -= trade_amount
-
+            if order.side == TradingSignal.BUY and (ask_price <= order.limit_price):
+                traded_amount = min(order.order_size, ask_size)
+                ask_size -= traded_amount
                 traded_px = ask_price
 
-            elif order.side == TradingSignal.SELL and bid_price >= order.limit_price:
-                trade_amount = min(-order.order_size, bid_size)
-                bid_size -= trade_amount
-                trade_amount = trade_amount * -1
+            elif order.side == TradingSignal.SELL and (bid_price >= order.limit_price):
+                traded_amount = min(-order.order_size, bid_size)
+                bid_size -= traded_amount
+                traded_amount = traded_amount * -1
                 traded_px = bid_price
 
             else:
                 continue
 
             # Update our variables if we executed
-            order.order_size -= trade_amount
-            cash_util -= trade_amount * traded_px
-            self.contracts_traded += abs(trade_amount)
-            open_pos += trade_amount
-            trade_history.append(Trade(trade_amount, traded_px, current_time))
+            order.order_size -= traded_amount
+            cash_util -= traded_amount * traded_px
+            self.contracts_traded += abs(traded_amount)
+            open_pos += traded_amount
+            trade_history.append(Trade(traded_amount, traded_px, current_time))
 
             # If the order is fully filled, remove it from the order book
             if order.order_size == 0:
@@ -443,14 +454,7 @@ class TradingAlgo:
     def initialize_reader(self, file_location):
         self.csv_iterator = pd.read_csv(
             file_location,
-            usecols=[
-                "Date-Time",
-                "Type",
-                "Bid Price",
-                "Bid Size",
-                "Ask Price",
-                "Ask Size",
-            ],
+            usecols=[CSV_COLUMNS_TO_READ],
             chunksize=1,
             parse_dates=["Date-Time"],
             date_format="%Y-%m-%dT%H:%M:%S.%f%z",

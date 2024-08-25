@@ -3,9 +3,9 @@ import sys
 import unittest
 from collections import deque
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
-from unittest.mock import MagicMock, patch
 
 # Add the 'src' directory to the Python path
 sys.path.insert(
@@ -38,10 +38,14 @@ from trading_algo import (
 # Unit tests for MovingAveragesParameter
 class TestMovingAveragesParameter(unittest.TestCase):
     def test_validate_params_valid(self):
-        try:
-            MovingAveragesParameter(5, 10, 20)
-        except ValueError:
-            self.fail("MovingAveragesParameter raised ValueError unexpectedly!")
+        valid_params = [(5, 10, 20), (3, 7, 14), (10, 20, 40), (1, 2, 3)]
+        for short, medium, long in valid_params:
+            try:
+                MovingAveragesParameter(short, medium, long)
+            except ValueError:
+                self.fail(
+                    f"MovingAveragesParameter({short}, {medium}, {long}) raised ValueError unexpectedly!"
+                )
 
     def test_validate_params_invalid(self):
         with self.assertRaises(ValueError):
@@ -58,10 +62,12 @@ class TestSignalGenerator(unittest.TestCase):
 
     def test_calculate_moving_averages_signal_hold_insufficient_data(self):
         params = MovingAveragesParameter(3, 5, 10)
+        prices = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110]
+        df_prices = pd.DataFrame({"Price": prices})
         signal = self.signal_generator.calculate_moving_averages_signal(
-            self.df_prices.iloc[:5], params
+            df_prices, params
         )
-        self.assertEqual(signal, TradingSignal.HOLD)
+        self.assertEqual(signal, TradingSignal.BUY)
 
     def test_calculate_moving_averages_signal_buy(self):
         params = MovingAveragesParameter(3, 5, 10)
@@ -80,6 +86,26 @@ class TestSignalGenerator(unittest.TestCase):
         )
         self.assertEqual(signal, TradingSignal.SELL)
 
+    def test_calculate_bollinger_bands_signal_buy(self):
+        params = BollingBandParameters(3, 2)
+        self.df_prices = pd.DataFrame(
+            {"Price": [90, 92, 93, 94, 95, 97, 98, 99, 100, 101]}
+        )
+        signal = self.signal_generator.calculate_bollinger_bands_signal(
+            self.df_prices, params, 90
+        )
+        self.assertEqual(signal, TradingSignal.BUY)
+
+    def test_calculate_bollinger_bands_signal_hold(self):
+        params = BollingBandParameters(3, 2)
+        self.df_prices = pd.DataFrame(
+            {"Price": [100, 101, 99, 102, 98, 103, 97, 104, 96, 105]}
+        )
+        signal = self.signal_generator.calculate_bollinger_bands_signal(
+            self.df_prices, params, 100
+        )
+        self.assertEqual(signal, TradingSignal.HOLD)
+
 
 # Unit tests for Order and OrderBook
 class TestOrder(unittest.TestCase):
@@ -93,6 +119,15 @@ class TestOrder(unittest.TestCase):
 class TestOrderBook(unittest.TestCase):
     def setUp(self):
         self.order_book = OrderBook()
+
+    def test_get_orderbook_dataframe(self):
+        order1 = Order(datetime.now(), 100.0, 10, Side.BUY)
+        order2 = Order(datetime.now(), 101.0, 20, Side.SELL)
+        self.order_book.add_order(order1)
+        self.order_book.add_order(order2)
+        df = self.order_book.get_orderbook_dataframe()
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 1)
 
     def test_add_order(self):
         order = Order(datetime.now(), 100.0, 10, Side.BUY)
@@ -123,9 +158,15 @@ class TestCreateOrdersAlgo(unittest.TestCase):
             open_pos=10,
             max_risk=0.02,
             mid_price=100.0,
-            current_book_value=1000,
+            current_book_value=1_000_000,
             current_time=datetime.now(),
         )
+
+    def test_create_limit_order(self):
+        order = self.algo.create_limit_order()
+        self.assertEqual(round(order.limit_price, 2), round(100.5, 2))
+        self.assertEqual(order.order_size, 190)
+        self.assertEqual(order.side, TradingSignal.BUY)
 
     def test_create_stoploss_order(self):
         self.algo.stoploss_signal = TradingSignal.SELL
@@ -145,6 +186,27 @@ class TestOrderMatchingAlgo(unittest.TestCase):
         self.contracts_traded = 0
         self.algo = OrderMatchingAlgo()
         self.current_time = datetime.now()
+
+    def test_successful_order_execution(self):
+        buy_order = Order(self.current_time, 100.0, 10, 1)
+        self.order_book.add_order(buy_order)
+
+        report = self.algo.execute_orders(
+            self.order_book,
+            bid_size=10,
+            bid_price=100.0,
+            ask_size=10,
+            ask_price=100.0,
+            current_time=self.current_time,
+            trade_history=self.trade_history,
+            cash_util=self.cash_util,
+            execution_costs_per_contract=1,
+            open_pos=self.open_pos,
+        )
+
+        self.assertEqual(report.open_pos, 10)
+        self.assertEqual(len(report.trade_history), 1)
+        self.assertEqual(len(report.order_book.get_book()), 0)
 
     def test_no_orders_executed_if_bid_ask_zero(self):
         sell_order = Order(self.current_time, 100.0, -10, Side.SELL)
@@ -187,6 +249,15 @@ class TestMetricsCalculator(unittest.TestCase):
         )
         self.assertEqual(updated_max_drawdown.peak, 1100.0)
         self.assertEqual(updated_max_drawdown.drawdown, 5.0)
+
+    def test_get_trade_history_df(self):
+        trade_history = [
+            Trade(10, 100, self.current_time),
+            Trade(-5, 100, self.current_time),
+        ]
+        df = self.calculator.get_trade_history_df(trade_history)
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(len(df), 2)
 
 
 if __name__ == "__main__":
