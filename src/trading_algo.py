@@ -4,6 +4,7 @@ from operator import attrgetter
 from enum import Enum
 from collections import deque
 import logging
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -14,8 +15,11 @@ ARBITRARY_HIGH_PRICE = 100_000_000
 ARBITRARY_LOW_PRICE = 0
 
 # Columns for Dataframe
-TRADE_HISTORY_COLUMNS = ["Trade Amount", "Price", "Time"]
+TRADE_HISTORY_COLUMNS = ["Traded Amount", "Price", "Time"]
 MAX_LENGTH_TRADE_HISTORY_DEQUE = 10
+
+# Time Formatting
+TIME_FORMAT_STRING = "%H:%M:%S"
 
 
 class Side(Enum):
@@ -154,14 +158,14 @@ class OrderBook:
         # Convert the list of orders to a list of dictionaries
         orders_data = [
             {
-                "Execution Time": order.execution_time,
+                "Execution Time": order.execution_time.strftime(TIME_FORMAT_STRING),
                 "Limit Price": order.limit_price,
-                "Order Size": order.order_size,
+                "Unfilled Size": order.order_size,
                 "Side": order.side,
             }
             for order in self.orders
         ]
-        return pd.DataFrame(orders_data)
+        return pd.DataFrame(orders_data).reset_index(drop=True)
 
 
 # Takes Signals and Converts them into Objects
@@ -248,13 +252,13 @@ class ExecutionReport:
         trade_history: deque[Trade],
         cash_util: float,
         open_pos: int,
-        execution_costs: float,
+        total_transaction_costs: float,
     ):
         self.order_book = order_book
         self.trade_history = trade_history
         self.cash_util = cash_util
         self.open_pos = open_pos
-        self.execution_costs = execution_costs
+        self.total_transaction_costs = total_transaction_costs
 
 
 class OrderMatchingAlgo:
@@ -263,11 +267,11 @@ class OrderMatchingAlgo:
         trade_history: deque[Trade],
         cash_util: float,
         open_pos: int,
-        execution_costs: float,
+        total_transaction_costs: float,
         order_book=OrderBook,
     ) -> ExecutionReport:
         return ExecutionReport(
-            order_book, trade_history, cash_util, open_pos, execution_costs
+            order_book, trade_history, cash_util, open_pos, total_transaction_costs
         )
 
     def execute_orders(
@@ -281,6 +285,7 @@ class OrderMatchingAlgo:
         trade_history: deque[Trade],
         cash_util: float,
         execution_costs_per_contract: float,
+        total_transactions_costs: float,
         open_pos: int,
     ) -> ExecutionReport:
 
@@ -297,7 +302,7 @@ class OrderMatchingAlgo:
                 trade_history,
                 cash_util,
                 open_pos,
-                execution_costs_per_contract,
+                total_transactions_costs,
                 order_book,
             )
 
@@ -325,9 +330,7 @@ class OrderMatchingAlgo:
             # Update our variables if we executed
             order.order_size -= trade_amount
             cash_util -= trade_amount * traded_px
-            execution_costs_per_contract = (
-                abs(trade_amount) * execution_costs_per_contract
-            )
+            total_transactions_costs += abs(trade_amount) * execution_costs_per_contract
             open_pos += trade_amount
             trade_history.append(Trade(trade_amount, traded_px, current_time))
 
@@ -336,7 +339,7 @@ class OrderMatchingAlgo:
                 order_book.orders.remove(order)
 
         return self.exit_order_matching(
-            trade_history, cash_util, open_pos, execution_costs_per_contract, order_book
+            trade_history, cash_util, open_pos, total_transactions_costs, order_book
         )
 
 
@@ -346,12 +349,11 @@ class MaxDrawDownInfo:
         self.peak = peak
 
 
-# Calculate_Data_for_Dashboard
 class MetricsCalculator:
     def calculate_pnl(
         self, open_pos: int, px_mid: float, cash_utils: float, trading_costs: float
     ):
-        return (open_pos * px_mid) + cash_utils - trading_costs
+        return (open_pos * px_mid) + cash_utils + trading_costs
 
     def get_trade_history_df(self, trade_history: deque[Trade]) -> pd.DataFrame:
         trade_data_list = []
@@ -360,35 +362,55 @@ class MetricsCalculator:
             trade_data = {
                 TRADE_HISTORY_COLUMNS[0]: trade.trade_amount,
                 TRADE_HISTORY_COLUMNS[1]: trade.price,
-                TRADE_HISTORY_COLUMNS[2]: trade.time,
+                TRADE_HISTORY_COLUMNS[2]: trade.time.strftime(TIME_FORMAT_STRING),
             }
-            trade_data_list.append(trade_data)
+            if trade.trade_amount != 0:
+                trade_data_list.append(trade_data)
 
-        return pd.DataFrame(trade_data_list, columns=TRADE_HISTORY_COLUMNS)
+        return pd.DataFrame(trade_data_list, columns=TRADE_HISTORY_COLUMNS).reset_index(
+            drop=True
+        )
 
     def update_max_drawdown(
         self, current_max_draw_down: MaxDrawDownInfo, new_portfolio_value: float
     ) -> MaxDrawDownInfo:
-        # Update the peak if the new portfolio value is greater
         if new_portfolio_value > current_max_draw_down.peak:
             new_peak = new_portfolio_value
-            new_max_drawdown = 0.0  # Reset drawdown since we have a new peak
+            new_max_drawdown = 0.0
         else:
             new_peak = current_max_draw_down.peak
-            if new_peak == 0:  # Prevent division by zero
+            if new_peak == 0:
                 drawdown = 0.0
             else:
                 drawdown = (new_peak - new_portfolio_value) / new_peak
-
-            # Calculate the new max drawdown
             new_max_drawdown = max(current_max_draw_down.drawdown, drawdown)
 
         return MaxDrawDownInfo(drawdown=new_max_drawdown, peak=new_peak)
+
+    def update_volatility(
+        self,
+        prev_mean: float,
+        prev_squared_diff: float,
+        prev_count: int,
+        new_value: float,
+    ) -> tuple:
+        count = prev_count + 1
+        new_mean = prev_mean + (new_value - prev_mean) / count
+        new_squared_diff = prev_squared_diff + (new_value - prev_mean) * (
+            new_value - new_mean
+        )
+
+        if count < 2:
+            return new_mean, new_squared_diff, 0.0
+
+        volatility = np.sqrt(new_squared_diff / (count - 1))
+        return new_mean, new_squared_diff, volatility
 
 
 class DashBoardData:
     def __init__(
         self,
+        current_time: datetime,
         current_price: float,
         current_pnl: float,
         open_pos: int,
@@ -396,7 +418,10 @@ class DashBoardData:
         current_max_drawdown: float,
         current_unfilled_trades: pd.DataFrame,
         df_last_trades: pd.DataFrame,
+        current_book_value: float,
+        current_volatility: float,
     ) -> None:
+        self.current_time = current_time.strftime(TIME_FORMAT_STRING)
         self.current_pnl = current_pnl
         self.current_price = current_price
         self.open_pos = open_pos
@@ -405,19 +430,21 @@ class DashBoardData:
         self.current_max_drawdown = current_max_drawdown
         self.current_unfilled_trades = current_unfilled_trades
         self.df_last_trades = df_last_trades
+        self.current_book_value = current_book_value
+        self.current_volatility = current_volatility
 
 
 class TradingAlgo:
     def __init__(
         self,
-        file_location: None,
-        moving_averages_params: MovingAveragesParameter,
+        file_location: str,
+        moving_averages_params,
         bollinger_bands_params: BollingBandParameters,
-        initial_capital: int = 1000000,
-        max_risk: int = 0.1,
-        limit_order_pct: float = 0,
-        millisec_execution_delay: timedelta = timedelta(microseconds=0),
-        transaction_fees_per_contract: int = 0,
+        initial_capital: int,
+        max_risk: int,
+        limit_order_pct: float,
+        millisec_execution_delay: timedelta,
+        transaction_fees_per_contract: int,
     ):
         self.initialize_reader(file_location)
         self.initialize_parameters(moving_averages_params, bollinger_bands_params)
@@ -430,7 +457,6 @@ class TradingAlgo:
         )
 
     def initialize_reader(self, file_location):
-        """Initialize the CSV reader."""
         self.csv_iterator = pd.read_csv(
             file_location,
             usecols=[
@@ -453,7 +479,6 @@ class TradingAlgo:
         moving_averages_params: MovingAveragesParameter,
         bollinger_bands_params: BollingBandParameters,
     ):
-        """Initialize the trading parameters."""
         self.moving_averages_params = moving_averages_params
         self.bollinger_bands_params = bollinger_bands_params
         self.price_deque = deque(
@@ -471,8 +496,6 @@ class TradingAlgo:
         millisec_execution_delay: timedelta,
         transaction_fees_per_contract: int,
     ):
-        """Initialize the trading state and metrics."""
-        # Market data
         self.date_time = None
         self.bid_price = None
         self.bid_size = None
@@ -481,30 +504,30 @@ class TradingAlgo:
         self.signal = None
         self.mid_price = None
 
-        # Financial metrics
         self.initial_capital = initial_capital
         self.book_value = initial_capital
         self.cash_utils = 0
         self.open_pos = 0
         self.pnl = 0
 
-        # Order and trade management
         self.order_book = OrderBook()
         self.trade_history = deque(maxlen=MAX_LENGTH_TRADE_HISTORY_DEQUE)
         self.limit_order_pct = limit_order_pct
         self.millisec_execution_delay = millisec_execution_delay
         self.max_risk = max_risk
 
-        # Transaction costs
         self.transaction_fees = transaction_fees_per_contract
-        self.trading_costs = 0
         self.total_transaction_costs = 0
 
-        # Risk metrics
         self.max_draw_down = MaxDrawDownInfo(0, 0)
 
+        # For volatility calculation
+        self.volatility_mean = 0.0
+        self.volatility_squared_diff = 0.0
+        self.volatility_count = 0
+        self.current_volatility = 0.0
+
     def read_next_line(self):
-        """Read the next line from the CSV file."""
         if self.current_chunk is None or len(self.current_chunk) == 0:
             try:
                 self.current_chunk = next(self.csv_iterator)
@@ -514,7 +537,6 @@ class TradingAlgo:
         return True
 
     def process_row(self, row: pd.Series):
-        """Process a single row of data."""
         self.date_time = row["Date-Time"]
         self.bid_price = row["Bid Price"]
         self.bid_size = row["Bid Size"]
@@ -525,7 +547,6 @@ class TradingAlgo:
         self.price_deque.append(self.mid_price)
 
     def calculate_signals(self):
-        """Calculate trading signals."""
         prices_df = pd.DataFrame(list(self.price_deque))
         signal_generator = SignalGenerator()
 
@@ -539,7 +560,6 @@ class TradingAlgo:
         return trading_signal, stop_loss_signal
 
     def create_and_execute_order(self, trading_signal, stop_loss_signal):
-        """Create and execute orders based on the signals."""
         if new_order := CreateOrdersAlgo(
             trading_signal,
             stop_loss_signal,
@@ -563,27 +583,26 @@ class TradingAlgo:
             self.trade_history,
             self.cash_utils,
             self.transaction_fees,
+            self.total_transaction_costs,
             self.open_pos,
         )
 
         self.update_state(execution_report)
 
     def update_state(self, execution_report: ExecutionReport):
-        """Update the state based on the execution report."""
         self.order_book = execution_report.order_book
         self.trade_history = execution_report.trade_history
 
         self.cash_utils = execution_report.cash_util
         self.open_pos = execution_report.open_pos
-        self.execution_costs = execution_report.execution_costs
+        self.total_transaction_costs = execution_report.total_transaction_costs
 
     def update_metrics(self):
-        """Update PnL and other dashboard metrics."""
         self.pnl = MetricsCalculator().calculate_pnl(
             open_pos=self.open_pos,
             px_mid=self.mid_price,
             cash_utils=self.cash_utils,
-            trading_costs=self.execution_costs,
+            trading_costs=self.total_transaction_costs,
         )
         self.book_value = self.initial_capital + self.pnl
 
@@ -591,60 +610,71 @@ class TradingAlgo:
             self.max_draw_down, self.book_value
         )
 
+        # Update volatility recursively
+        (
+            self.volatility_mean,
+            self.volatility_squared_diff,
+            self.current_volatility,
+        ) = MetricsCalculator().update_volatility(
+            self.volatility_mean,
+            self.volatility_squared_diff,
+            self.volatility_count,
+            self.book_value,
+        )
+        self.volatility_count += 1
+
     def get_dashboard_data(self) -> DashBoardData:
-        print(self.date_time)
         return DashBoardData(
+            current_time=self.date_time,
             current_pnl=self.pnl,
             current_price=self.mid_price,
             open_pos=self.open_pos,
-            current_trading_costs=self.trading_costs,
+            current_trading_costs=self.total_transaction_costs,
             current_max_drawdown=self.max_draw_down.drawdown,
             current_unfilled_trades=self.order_book.get_orderbook_dataframe(),
             df_last_trades=MetricsCalculator().get_trade_history_df(self.trade_history),
+            current_book_value=self.book_value,
+            current_volatility=self.current_volatility,
         )
 
-    def go_to_next_line(self):
-        """Main loop to go to the next line  process it."""
-        if not self.read_next_line():
-            return False
+    def get_new_data(self):
+        while True:
+            if not self.read_next_line():
+                return False, None
 
-        while len(self.current_chunk) > 0:
             row = self.current_chunk.iloc[0]
 
             if row["Type"] != "Quote":
                 self.current_chunk = self.current_chunk.iloc[1:]
+                if self.current_chunk.empty:
+                    self.current_chunk = None
                 continue
 
-            logging.info("New Line")
             self.process_row(row)
-
-            logging.info("Processed Data")
             trading_signal, stop_loss_signal = self.calculate_signals()
-
-            logging.info("Got Trading Signals")
             self.create_and_execute_order(trading_signal, stop_loss_signal)
-
-            logging.info("Created an executed Orders")
             self.update_metrics()
-
-            logging.info("Created an executed Orders")
-            self.get_dashboard_data()
             self.current_chunk = self.current_chunk.iloc[1:]
-            return True
+            if self.current_chunk.empty:
+                self.current_chunk = None
 
-        return self.go_t
+            return True, self.get_dashboard_data()
 
 
+# Example usage
 if __name__ == "__main__":
     trading_algo = TradingAlgo(
-        file_location="C:\\Users\\juane\\Documents\\Python\\Baraktest\\src\\trading_data.csv",
+        file_location="C:\\Users\\juane\\Documents\\Python\\Baraktest\\etc\\trading_data.csv",
         moving_averages_params=MovingAveragesParameter(2, 5, 8),
         bollinger_bands_params=BollingBandParameters(13, 3),
         initial_capital=1000,
         max_risk=0.3,
         limit_order_pct=15,
-        millisec_execution_delay=timedelta(milliseconds=1000),
-        transaction_fees_per_contract=0,
+        millisec_execution_delay=timedelta(milliseconds=0),
+        transaction_fees_per_contract=5,
     )
-    while True:
-        trading_algo.go_to_next_line()
+
+    counter = 0
+    while counter < 500:
+        trading_algo.get_new_data()
+        counter += 1
