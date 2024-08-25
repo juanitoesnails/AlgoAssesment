@@ -2,3 +2,4 @@ ipywidgets
 IPython
 pandas
 plotly
+pytest
