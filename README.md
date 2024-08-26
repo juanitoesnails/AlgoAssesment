@@ -66,7 +66,7 @@ Orders are filled based on price-time priority. If an order has an execution tim
 ### Step 1: Download and Configure Data
 
 1. **Download CSV Data**:
-   - Obtain a CSV file containing trading data.
+   - Download the CSV file containing trading data. Link: https://wetransfer.com/downloads/d09f2800c899a04235e7afdfd42955c420240819085825/3c7f739d026543ccec8243fedc321c7f20240819085850/6e17e0?trk=TRN_TDL_01&utm_campaign=TRN_TDL_01&utm_medium=email&utm_source=sendgrid.
 
 2. **Configure File Location**:
    - Place the downloaded CSV file in your desired directory.
