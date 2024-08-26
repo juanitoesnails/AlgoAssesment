@@ -53,8 +53,10 @@ Orders are filled based on price-time priority. If an order has an execution tim
    git clone https://github.com/juanitoesnails/Baraktest.git
    cd trading-algo
    ```
+2. **Optional Create a Virtual Env**:
 
-2. Install the required dependencies:
+
+3. Install the required dependencies:
    ```bash
    pip install -r requirements.txt
    ```
