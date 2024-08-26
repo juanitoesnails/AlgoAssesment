@@ -221,7 +221,9 @@ class CreateOrdersAlgo:
         )
 
     def create_limit_order(self) -> Order:  # Assuming Order is defined elsewhere
-        desired_esp = self.current_book_value * self.max_risk * self.trading_signal
+        desired_esp = (
+            self.current_book_value * (self.max_risk / 100) * self.trading_signal
+        )
         current_esp = self.open_pos * self.mid_price
         target_order = int((desired_esp - current_esp) / self.mid_price)
 
