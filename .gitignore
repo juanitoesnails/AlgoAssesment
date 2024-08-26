@@ -15,3 +15,6 @@ __pycache__/
 # Ignore virtual environment directories
 venv/
 env/
+
+# Ignore settings.json file
+settings.json

@@ -435,7 +435,7 @@ class TradingAlgo:
     def __init__(
         self,
         file_location: str,
-        moving_averages_params,
+        moving_averages_params: MovingAveragesParameter,
         bollinger_bands_params: BollingBandParameters,
         initial_capital: int,
         max_risk: int,
@@ -443,8 +443,11 @@ class TradingAlgo:
         millisec_execution_delay: timedelta,
         transaction_fees_per_contract: float,
     ):
+
         self.initialize_reader(file_location)
+        logging.debug("Initialised File Location")
         self.initialize_parameters(moving_averages_params, bollinger_bands_params)
+        logging.debug("Read the file")
         self.initialize_state(
             initial_capital,
             max_risk,
@@ -452,16 +455,17 @@ class TradingAlgo:
             millisec_execution_delay,
             transaction_fees_per_contract,
         )
+        logging.debug("Initialised State")
 
     def initialize_reader(self, file_location):
         self.csv_iterator = pd.read_csv(
             file_location,
-            usecols=[CSV_COLUMNS_TO_READ],
+            usecols=CSV_COLUMNS_TO_READ,
             chunksize=1,
             parse_dates=["Date-Time"],
             date_format="%Y-%m-%dT%H:%M:%S.%f%z",
         )
-
+        logging.debug("Initialised Reader")
         self.current_chunk = None
 
     def initialize_parameters(
@@ -477,6 +481,7 @@ class TradingAlgo:
                 self.bollinger_bands_params.rolling_window,
             )
         )
+        logging.debug("Initialised Params")
 
     def initialize_state(
         self,
@@ -515,7 +520,9 @@ class TradingAlgo:
         if self.current_chunk is None or len(self.current_chunk) == 0:
             try:
                 self.current_chunk = next(self.csv_iterator)
+                logging.debug("Going to next line")
             except StopIteration:
+                logging.info("No more market data left")
                 return False
 
         return True
@@ -529,6 +536,7 @@ class TradingAlgo:
         self.mid_price = (self.bid_price + self.ask_price) / 2
 
         self.price_deque.append(self.mid_price)
+        logging.debug("Added a new mid price")
 
     def calculate_signals(self):
         prices_df = pd.DataFrame(list(self.price_deque))
@@ -540,7 +548,7 @@ class TradingAlgo:
         trading_signal = signal_generator.calculate_moving_averages_signal(
             prices_df, self.moving_averages_params
         )
-
+        logging.debug("Trading Signals calculated")
         return trading_signal, stop_loss_signal
 
     def create_and_execute_order(self, trading_signal, stop_loss_signal):
@@ -556,6 +564,7 @@ class TradingAlgo:
             self.date_time,
         ).create_order():
             self.order_book.add_order(new_order)
+            logging.debug("Added an order")
 
         execution_report = OrderMatchingAlgo().execute_orders(
             self.order_book,
@@ -569,7 +578,7 @@ class TradingAlgo:
             self.transaction_fees,
             self.open_pos,
         )
-
+        logging.debug("Got Execution Report")
         self.update_state(execution_report)
 
     def update_state(self, execution_report: ExecutionReport):
@@ -581,6 +590,7 @@ class TradingAlgo:
         self.total_transaction_costs += (
             execution_report.contracts_traded * self.transaction_fees
         )
+        logging.debug("Updated State")
 
     def update_metrics(self):
         self.pnl = MetricsCalculator().calculate_pnl(
@@ -594,8 +604,10 @@ class TradingAlgo:
         self.max_draw_down = MetricsCalculator().update_max_drawdown(
             self.max_draw_down, self.book_value
         )
+        logging.debug("Updated Metrics")
 
     def get_dashboard_data(self) -> DashBoardData:
+        logging.debug("Send Data to dashboard")
         return DashBoardData(
             current_time=self.date_time,
             current_pnl=self.pnl,
@@ -610,7 +622,9 @@ class TradingAlgo:
 
     def get_new_data(self):
         while True:
+            logging.debug("Getting new data....")
             if not self.read_next_line():
+                logging.info("Stopped Iteration")
                 return False, None
 
             row = self.current_chunk.iloc[0]
@@ -628,4 +642,5 @@ class TradingAlgo:
             self.current_chunk = self.current_chunk.iloc[1:]
             if self.current_chunk.empty:
                 self.current_chunk = None
+            logging.debug("All data obtained and updated")
             return True, self.get_dashboard_data()
