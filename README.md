@@ -78,16 +78,20 @@ Orders are filled based on price-time priority. If an order has an execution tim
 1. **Open the Dashboard**:
    - Navigate to the dashboard located at `src/dashboard/`.
    - Open the Jupyter Notebook (`dashboard.ipynb`) in this directory.
+     
+2. **Create the Dashboard**:
+   - Run the cell to create the dashboard.
 
-2. **Set Parameters**:
+3. **Set Parameters**:
    - In the notebook, input the desired parameters for the trading algorithm, such as:
      - Moving averages (short, medium, long windows).
      - Bollinger Bands (rolling window, standard deviations).
      - Initial capital, risk levels, execution delays, etc.
-
+   - After choosing the inputs click on `Start Trading`. This will laucnh the algo
+    
 3. **Run the Algorithm**:
-   - Execute the notebook cells to run the trading algorithm with the configured parameters.
-   - The algorithm will process the CSV data and generate trading signals.
+   - Click Start to start the algo and Stop to stop it. Note that once you stop you can't continue where you left. 
+   - To input new parameters make sure to restart the cell.
 
 ### Step 3: Visualize Results
 
