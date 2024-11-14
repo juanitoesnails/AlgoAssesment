@@ -1,0 +1,20 @@
+# Ignore all CSV files
+*.csv
+
+# Ignore cache directories
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore any specific cache files
+*.cache
+*.tmp
+
+# Ignore virtual environment directories
+venv/
+env/
+
+# Ignore settings.json file
+settings.json

@@ -53,8 +53,10 @@ Orders are filled based on price-time priority. If an order has an execution tim
    git clone https://github.com/juanitoesnails/Baraktest.git
    cd trading-algo
    ```
+2. **Optional Create a Virtual Env**:
 
-2. Install the required dependencies:
+
+3. Install the required dependencies:
    ```bash
    pip install -r requirements.txt
    ```
@@ -64,7 +66,7 @@ Orders are filled based on price-time priority. If an order has an execution tim
 ### Step 1: Download and Configure Data
 
 1. **Download CSV Data**:
-   - Obtain a CSV file containing trading data.
+   - Download the CSV file containing trading data. Link: https://wetransfer.com/downloads/d09f2800c899a04235e7afdfd42955c420240819085825/3c7f739d026543ccec8243fedc321c7f20240819085850/6e17e0?trk=TRN_TDL_01&utm_campaign=TRN_TDL_01&utm_medium=email&utm_source=sendgrid.
 
 2. **Configure File Location**:
    - Place the downloaded CSV file in your desired directory.
@@ -76,16 +78,20 @@ Orders are filled based on price-time priority. If an order has an execution tim
 1. **Open the Dashboard**:
    - Navigate to the dashboard located at `src/dashboard/`.
    - Open the Jupyter Notebook (`dashboard.ipynb`) in this directory.
+     
+2. **Create the Dashboard**:
+   - Run the cell to create the dashboard.
 
-2. **Set Parameters**:
+3. **Set Parameters**:
    - In the notebook, input the desired parameters for the trading algorithm, such as:
      - Moving averages (short, medium, long windows).
      - Bollinger Bands (rolling window, standard deviations).
      - Initial capital, risk levels, execution delays, etc.
-
+   - After choosing the inputs click on `Start Trading`. This will laucnh the algo
+    
 3. **Run the Algorithm**:
-   - Execute the notebook cells to run the trading algorithm with the configured parameters.
-   - The algorithm will process the CSV data and generate trading signals.
+   - Click Start to start the algo and Stop to stop it. Note that once you stop you can't continue where you left. 
+   - To input new parameters make sure to restart the cell.
 
 ### Step 3: Visualize Results
 
