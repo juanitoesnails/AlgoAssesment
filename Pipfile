@@ -36,6 +36,7 @@ wcwidth = "==0.2.13"
 widgetsnbextension = "==4.0.13"
 yfinance = "*"
 matplotlib = "*"
+scipy = "*"
 
 [dev-packages]
 
